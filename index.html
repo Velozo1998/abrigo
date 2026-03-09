@@ -830,13 +830,30 @@ async function finalizarDevolucao(id, opcao, funcRec, obs) {
     });
     a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido com '+parcelasAbertas.length+' parcela(s) em aberto. Dívida registrada para '+a.locatario+'. Total estimado: R$ '+totalDevido.toFixed(2), obs });
   } else {
+    // Baixar tudo — mark all open parcelas as paid today
+    if (parcelasAbertas.length > 0) {
+      const forma = prompt('Forma de pagamento das parcelas quitadas? (PIX / Dinheiro / Boleto / Cartão)', 'Dinheiro') || 'Dinheiro';
+      parcelasAbertas.forEach(p => {
+        p.status = 'pago';
+        p.dataPagamento = hoje();
+        p.formaPagamento = forma;
+        p.valorPago = a.valorMensal || '';
+      });
+      const total = (parcelasAbertas.length * parseFloat(a.valorMensal || 0)).toFixed(2);
+      a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: parcelasAbertas.length+' parcela(s) quitada(s) na devolução via '+forma+'. Total: R$ '+total, obs });
+      // Offer recibo
+      const gerarRec = confirm('Parcelas quitadas! Deseja gerar o recibo de quitação agora?');
+      if (gerarRec) {
+        setTimeout(() => gerarReciboDevolucao(a.num, a.locatario, a.doc, a.endereco, parcelasAbertas, a.valorMensal, forma, total), 500);
+      }
+    }
     a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
   }
 
   Object.assign(a, {
     status: 'disponivel', locatario: '', doc: '', tel: '', endereco: '',
     funcEntregou: '', funcRecolheu: funcRec, dataLocacao: '', valorMensal: '',
-    multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: []
+    multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: a.parcelas
   });
   fechar('overlayModal'); fechar('overlayDetalhe'); renderGrid();
   await salvar();
@@ -865,7 +882,7 @@ async function confirmarRetirada(id) {
 function abrirAdicionarParcelas(id) {
   const a = abrigos.find(x => x.id === id);
   const ultimaParcela = a.parcelas[a.parcelas.length - 1];
-  const ultimaData = ultimaParcela ? ultimaParcela.vencimento : a.dataLocacao;
+    +   '<button class="close-btn" onclick="fechar(\'overlayDash\')">×</button>'
   const panel = document.getElementById('panelModal');
   const ultLabel = ultimaParcela ? fmtDate(ultimaParcela.vencimento) : '—';
   panel.innerHTML = ''
@@ -1013,15 +1030,60 @@ function gerarRecibo(abrigoId, parcelaId) {
   win.document.close();
 }
 
+
+// ─── RECIBO DEVOLUÇÃO ─────────────────────────────────────
+function gerarReciboDevolucao(abrigoNum, locatario, doc, endereco, parcelas, valorMensal, forma, total) {
+  const win = window.open('', '_blank');
+  const linhasParcelas = parcelas.map(p =>
+    '<div class="row"><span class="key">Parcela '+p.id+' (Venc: '+fmtDate(p.vencimento)+')</span><span class="val">R$ '+(p.valorPago||valorMensal||'—')+'</span></div>'
+  ).join('');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo de Quitação</title>'
+    + '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
+    + '<style>body{font-family:Arial,sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#111}'
+    + 'h1{font-size:20px;text-align:center;margin-bottom:4px}.sub{text-align:center;color:#666;font-size:12px;margin-bottom:28px}'
+    + '.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:13px}'
+    + '.key{color:#666}.val{font-weight:500}.total{font-size:16px;font-weight:700;color:#111;margin-top:16px;text-align:right}'
+    + '.assin{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:48px}'
+    + '.assin-line{border-top:1px solid #333;padding-top:8px;font-size:11px;color:#666;text-align:center}'
+    + '.footer{text-align:center;font-size:10px;color:#bbb;margin-top:32px}'
+    + '@media print{button{display:none}}</style></head><body>'
+    + '<h1>RECIBO DE QUITAÇÃO</h1>'
+    + '<div class="sub">Grupo Vagula · Locação de Abrigo Móvel</div>'
+    + '<div class="row"><span class="key">Abrigo Nº</span><span class="val">'+abrigoNum+'</span></div>'
+    + '<div class="row"><span class="key">Locatário</span><span class="val">'+locatario+'</span></div>'
+    + (doc ? '<div class="row"><span class="key">CPF / CNPJ</span><span class="val">'+doc+'</span></div>' : '')
+    + (endereco ? '<div class="row"><span class="key">Endereço da Obra</span><span class="val">'+endereco+'</span></div>' : '')
+    + '<div class="row"><span class="key">Data de Quitação</span><span class="val">'+hoje()+'</span></div>'
+    + '<div class="row"><span class="key">Forma de Pagamento</span><span class="val">'+forma+'</span></div>'
+    + '<div style="margin:12px 0 4px;font-weight:600;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.05em">Parcelas Quitadas</div>'
+    + linhasParcelas
+    + '<div class="total">Total Quitado: R$ '+total+'</div>'
+    + '<div class="assin"><div class="assin-line">Locador / Grupo Vagula</div><div class="assin-line">Locatário: '+locatario+'</div></div>'
+    + '<div class="footer">Emitido em '+hoje()+' · Abrigos — Controle de Locações</div>'
+    + '<br><button onclick="window.print()" style="padding:8px 20px;cursor:pointer;margin-right:8px">🖨 Imprimir</button>'
+    + '<button onclick="window.close()" style="padding:8px 20px;cursor:pointer">Fechar</button>'
+    + '</body></html>');
+  win.document.close();
+}
+
 // ─── DASHBOARD FINANCEIRO ─────────────────────────────────
-function abrirDashboard() {
+function abrirDashboard(filtroMes, filtroAno) {
   const panel = document.getElementById('panelDash');
   const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
-  const mesAtual = hoje2.getMonth();
-  const anoAtual = hoje2.getFullYear();
+  const mesAtual = filtroMes !== undefined ? filtroMes : hoje2.getMonth();
+  const anoAtual = filtroAno !== undefined ? filtroAno : hoje2.getFullYear();
 
-  let totalReceber = 0, recebidoMes = 0, inadimplencia = 0, totalOcupados = 0;
-  const recebidoMesLista = [];
+  // Build month/year selector options
+  const mesesNomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  let mesOpts = '';
+  for (let m = 0; m < 12; m++) mesOpts += '<option value="'+m+'"'+(m===mesAtual?' selected':'')+'>'+mesesNomes[m]+'</option>';
+  let anoOpts = '';
+  for (let a = hoje2.getFullYear(); a >= hoje2.getFullYear()-3; a--) anoOpts += '<option value="'+a+'"'+(a===anoAtual?' selected':'')+'>'+a+'</option>';
+
+  let totalReceber = 0, recebidoPeriodo = 0, inadimplencia = 0, totalOcupados = 0;
+  const recebidoLista = [];
+  // Acumulado anual por mês
+  const recebidoPorMes = Array(12).fill(0);
 
   abrigos.forEach(a => {
     const st = calcStatus(a);
@@ -1035,10 +1097,13 @@ function abrirDashboard() {
       } else {
         const parts = p.dataPagamento.split('/');
         if (parts.length === 3) {
-          const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-          if (d.getMonth() === mesAtual && d.getFullYear() === anoAtual) {
-            recebidoMes += val;
-            recebidoMesLista.push({ abrigo: a.num, locatario: a.locatario, parcela: p.id, valor: val, forma: p.formaPagamento });
+          const d = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+          if (d.getFullYear() === anoAtual) {
+            recebidoPorMes[d.getMonth()] += val;
+            if (d.getMonth() === mesAtual) {
+              recebidoPeriodo += val;
+              recebidoLista.push({ abrigoNum: a.num, locatario: a.locatario, parcela: p.id, valor: val, forma: p.formaPagamento, data: p.dataPagamento });
+            }
           }
         }
       }
@@ -1046,62 +1111,82 @@ function abrirDashboard() {
   });
 
   const taxaOcup = Math.round((totalOcupados / TOTAL) * 100);
+  const totalAnual = recebidoPorMes.reduce((s,v) => s+v, 0);
 
-  // Ocupação por mês (últimos 6 meses)
-  const ocupRows = abrigos.filter(a => a.status !== 'disponivel' && a.dataLocacao).map(a => {
-    const diasTotal = a.parcelas ? a.parcelas.filter(p => p.status === 'pago').length * 30 : 0;
-    return `<div class="info-row"><span class="info-key">#${a.num} ${esc(a.locatario)}</span><span class="info-val">${a.dataLocacao ? fmtDate(a.dataLocacao) : '—'} · ${a.parcelas ? a.parcelas.filter(p=>p.status==='pago').length : 0} parcelas pagas</span></div>`;
-  }).join('');
+  // Bar chart por mês
+  const maxBar = Math.max(...recebidoPorMes, 1);
+  const barChart = '<div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px;align-items:end;height:60px;margin:12px 0 4px">'
+    + recebidoPorMes.map((v, i) => {
+        const h = Math.round((v / maxBar) * 100);
+        const cor = i === mesAtual ? 'var(--green)' : 'var(--border2)';
+        return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">'
+          + '<div style="width:100%;background:'+cor+';height:'+h+'%;border-radius:3px 3px 0 0;min-height:2px;cursor:pointer" onclick="abrirDashboard('+i+','+anoAtual+')" title="'+mesesNomes[i]+': R$ '+v.toFixed(2)+'"></div>'
+          + '<div style="font-size:9px;color:var(--muted)">'+mesesNomes[i]+'</div>'
+        + '</div>';
+      }).join('')
+    + '</div>';
+
+  const taxaInad = totalAnual > 0 ? Math.round((inadimplencia / (totalAnual + inadimplencia)) * 100) : 0;
 
   // Dívidas pendentes
   const todasDividas = [];
   abrigos.forEach(a => (a.dividas||[]).filter(d => d.status === 'pendente').forEach(d => todasDividas.push({...d, abrigoNum: a.num, abrigoId: a.id})));
   const dividasHtml = todasDividas.length > 0
-    ? '<div class="info-block"><div class="info-block-title" style="color:var(--red)">⚠️ Dívidas Pendentes ('+todasDividas.length+')</div>'
+    ? '<div class="info-block"><div class="info-block-title" style="color:var(--red)">⚠️ Dívidas Pendentes ('+todasDividas.length+') · R$ '+todasDividas.reduce((s,d)=>s+parseFloat(d.totalEstimado||0),0).toFixed(2)+'</div>'
       + todasDividas.map(d =>
-          '<div class="alert-venc" style="flex-direction:column;align-items:flex-start;gap:8px">'
-          + '<div style="display:flex;justify-content:space-between;width:100%">'
-          + '<div><strong>Abrigo #'+d.abrigoNum+'</strong> · '+esc(d.locatario)+'<br>'
+          '<div class="alert-venc">'
+          + '<div class="alert-venc-info"><strong>Abrigo #'+d.abrigoNum+'</strong> · '+esc(d.locatario)+'<br>'
           + '<span style="font-size:11px;color:var(--muted)">'+d.parcelasAbertas+' parcela(s) · Devolvido em '+d.dataDevolucao+'</span></div>'
           + '<div style="text-align:right"><span style="color:var(--red);font-family:var(--font-mono);font-size:13px">R$ '+d.totalEstimado+'</span><br>'
           + '<button class="btn-pagar" style="margin-top:4px" onclick="abrirGerenciarDivida('+d.abrigoId+','+d.id+')">Gerenciar</button></div>'
-          + '</div></div>'
+          + '</div>'
         ).join('')
       + '</div>'
     : '';
 
-  const listaRecebido = recebidoMesLista.map(r =>
-    `<div class="info-row"><span class="info-key">#${r.abrigo} ${esc(r.locatario)} · Parc.${r.parcela}</span><span class="info-val" style="color:var(--green)">R$ ${r.valor.toFixed(2)} · ${r.forma}</span></div>`
-  ).join('') || '<div style="color:var(--muted);font-size:13px">Nenhum pagamento este mês.</div>';
+  const listaRecebido = recebidoLista.length > 0
+    ? recebidoLista.map(r =>
+        '<div class="info-row">'
+        + '<span class="info-key">#'+r.abrigoNum+' '+esc(r.locatario)+' · Parc.'+r.parcela+' · '+r.data+'</span>'
+        + '<span class="info-val" style="color:var(--green)">R$ '+r.valor.toFixed(2)+' · '+r.forma+'</span>'
+        + '</div>'
+      ).join('')
+    : '<div style="color:var(--muted);font-size:13px">Nenhum pagamento neste período.</div>';
 
-  panel.innerHTML = `
-    <div class="panel-header">
-      <div><div class="panel-title">📊 Resumo Financeiro</div><div class="panel-sub">${new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div></div>
-      <button class="close-btn" onclick="fechar('overlayDash')">×</button>
-    </div>
-    <div class="panel-body">
-      <div class="fin-grid">
-        <div class="fin-card"><div class="fin-num" style="color:var(--green)">R$ ${recebidoMes.toFixed(2)}</div><div class="fin-label">Recebido este mês</div></div>
-        <div class="fin-card"><div class="fin-num" style="color:var(--red)">R$ ${inadimplencia.toFixed(2)}</div><div class="fin-label">Inadimplência</div></div>
-        <div class="fin-card"><div class="fin-num" style="color:var(--blue)">R$ ${totalReceber.toFixed(2)}</div><div class="fin-label">A receber (futuro)</div></div>
-      </div>
-      <div class="fin-card" style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span class="fin-label">Taxa de Ocupação</span>
-          <span style="font-family:var(--font-mono);font-size:13px;color:var(--green)">${taxaOcup}% · ${totalOcupados}/${TOTAL} abrigos</span>
-        </div>
-        <div class="ocup-bar-wrap"><div class="ocup-bar" style="width:${taxaOcup}%"></div></div>
-      </div>
-      <div class="info-block">
-        <div class="info-block-title">Recebimentos deste mês</div>
-        ${listaRecebido}
-      </div>
-      <div class="info-block">
-        <div class="info-block-title">Abrigos em locação</div>
-        ${ocupRows || '<div style="color:var(--muted);font-size:13px">Nenhum abrigo alugado.</div>'}
-      </div>
-      ${dividasHtml}
-    </div>`;
+  const nomeMes = new Date(anoAtual, mesAtual, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">📊 Resumo Financeiro</div><div class="panel-sub">'+nomeMes+'</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayDash\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">'
+    +     '<select class="form-select" style="flex:1" onchange="abrirDashboard(parseInt(this.value),'+anoAtual+')">'+mesOpts+'</select>'
+    +     '<select class="form-select" style="width:90px" onchange="abrirDashboard('+mesAtual+',parseInt(this.value))">'+anoOpts+'</select>'
+    +   '</div>'
+    +   '<div class="fin-grid">'
+    +     '<div class="fin-card"><div class="fin-num" style="color:var(--green)">R$ '+recebidoPeriodo.toFixed(2)+'</div><div class="fin-label">Recebido em '+mesesNomes[mesAtual]+'</div></div>'
+    +     '<div class="fin-card"><div class="fin-num" style="color:var(--red)">R$ '+inadimplencia.toFixed(2)+'</div><div class="fin-label">Inadimplência atual</div></div>'
+    +     '<div class="fin-card"><div class="fin-num" style="color:var(--blue)">R$ '+totalAnual.toFixed(2)+'</div><div class="fin-label">Total recebido '+anoAtual+'</div></div>'
+    +   '</div>'
+    +   '<div class="fin-card" style="margin-bottom:16px">'
+    +     '<div style="display:flex;justify-content:space-between;margin-bottom:2px">'
+    +       '<span class="fin-label">Recebido por mês em '+anoAtual+' (clique no mês)</span>'
+    +       '<span style="font-family:var(--font-mono);font-size:11px;color:var(--muted)">Total: R$ '+totalAnual.toFixed(2)+'</span>'
+    +     '</div>'
+    +     barChart
+    +   '</div>'
+    +   '<div class="fin-card" style="margin-bottom:16px">'
+    +     '<div style="display:flex;justify-content:space-between;margin-bottom:6px">'
+    +       '<span class="fin-label">Taxa de Ocupação</span>'
+    +       '<span style="font-family:var(--font-mono);font-size:13px;color:var(--green)">'+taxaOcup+'% · '+totalOcupados+'/'+TOTAL+' abrigos</span>'
+    +     '</div>'
+    +     '<div class="ocup-bar-wrap"><div class="ocup-bar" style="width:'+taxaOcup+'%"></div></div>'
+    +   '</div>'
+    +   '<div class="info-block"><div class="info-block-title">Recebimentos — '+nomeMes+'</div>'+listaRecebido+'</div>'
+    +   dividasHtml
+    + '</div>';
   abrir('overlayDash');
 }
 
