@@ -347,20 +347,61 @@ async function gFetch(url, opts = {}) {
   return res;
 }
 
+let ultimoETag = null;
+
 async function carregar() {
   try {
     const res = await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}:/content`);
     if (res.status === 404) return dadosIniciais();
+    // Store eTag to detect conflicts
+    const metaRes = await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}`);
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      ultimoETag = meta.eTag || meta.cTag || null;
+    }
     const data = await res.json();
     return Array.isArray(data) ? data : dadosIniciais();
   } catch { return dadosIniciais(); }
 }
 
 async function salvar() {
+  // Check for conflicts — verify eTag hasn't changed
+  try {
+    const metaRes = await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}`);
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      const eTagAtual = meta.eTag || meta.cTag || null;
+      if (ultimoETag && eTagAtual && ultimoETag !== eTagAtual) {
+        // Conflict detected!
+        const continuar = confirm(
+          '⚠️ ATENÇÃO: Os dados foram alterados por outra pessoa desde que você abriu o sistema!\n\n' +
+          'Se salvar agora, as alterações dela serão PERDIDAS.\n\n' +
+          'Clique OK para salvar mesmo assim, ou Cancelar para recarregar os dados mais recentes.'
+        );
+        if (!continuar) {
+          abrigos = await carregar();
+          renderGrid();
+          alert('Dados recarregados com as informações mais recentes. Refaça suas alterações.');
+          return;
+        }
+      }
+    }
+  } catch(e) {}
+
   const blob = new Blob([JSON.stringify(abrigos, null, 2)], { type: 'application/json' });
   await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}:/content`, {
     method: 'PUT', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: blob
   });
+
+  // Update eTag after saving
+  try {
+    const metaRes = await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}`);
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      ultimoETag = meta.eTag || meta.cTag || null;
+    }
+  } catch(e) {}
+
   const el = document.getElementById('saveStatus');
   el.textContent = 'Salvo no SharePoint ✓';
   el.classList.add('show');
@@ -377,7 +418,7 @@ function dadosIniciais() {
     funcEntregou: '', funcRecolheu: '',
     dataLocacao: '', valorMensal: '',
     dataDevolucaoPrevista: '', multaAtraso: '',
-    obs: '', historico: [], parcelas: [], anexos: [], emManutencao: false
+    obs: '', historico: [], parcelas: [], anexos: [], emManutencao: false, dividas: []
   }));
 }
 
@@ -736,7 +777,60 @@ async function confirmarEdicao(id) {
 async function confirmarDevolver(id) {
   const a = abrigos.find(x => x.id === id);
   const funcRec = v('f-func-rec'), obs = v('f-obs-dev');
-  a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
+  const parcelasAbertas = (a.parcelas || []).filter(p => p.status !== 'pago');
+
+  if (parcelasAbertas.length > 0) {
+    // Show options for pending parcelas
+    const panel = document.getElementById('panelModal');
+    const totalDevido = parcelasAbertas.reduce((sum, p) => sum + parseFloat(a.valorMensal || 0), 0).toFixed(2);
+    panel.innerHTML = ''
+      + '<div class="panel-header">'
+      +   '<div><div class="panel-title">Parcelas em Aberto</div>'
+      +   '<div class="panel-sub">Abrigo #'+a.num+' · '+esc(a.locatario)+'</div></div>'
+      +   '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button>'
+      + '</div>'
+      + '<div class="panel-body">'
+      +   '<p class="confirm-text">Este cliente possui <strong style="color:var(--red)">'+parcelasAbertas.length+' parcela(s) em aberto</strong> totalizando aproximadamente <strong style="color:var(--red)">R$ '+totalDevido+'</strong>.</p>'
+      +   '<p class="confirm-text">O que deseja fazer com essas pendências?</p>'
+      +   '<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">'
+      +     '<button class="btn btn-red" onclick="finalizarDevolucao('+id+',\'manter\',\''+funcRec+'\',\''+obs+'\')">⚠️ Manter dívida — liberar abrigo e registrar débito do cliente</button>'
+      +     '<button class="btn btn-green" onclick="finalizarDevolucao('+id+',\'baixar\',\''+funcRec+'\',\''+obs+'\')">✓ Baixar tudo — considerar quitado e liberar abrigo</button>'
+      +     '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+      +   '</div>'
+      + '</div>';
+    return;
+  }
+
+  await finalizarDevolucao(id, 'baixar', funcRec, obs);
+}
+
+async function finalizarDevolucao(id, opcao, funcRec, obs) {
+  const a = abrigos.find(x => x.id === id);
+  const parcelasAbertas = (a.parcelas || []).filter(p => p.status !== 'pago');
+
+  if (opcao === 'manter' && parcelasAbertas.length > 0) {
+    // Save divida record
+    if (!a.dividas) a.dividas = [];
+    const totalDevido = parcelasAbertas.reduce((sum, p) => sum + parseFloat(a.valorMensal || 0), 0);
+    a.dividas.push({
+      id: Date.now(),
+      locatario: a.locatario,
+      doc: a.doc || '',
+      tel: a.tel || '',
+      dataLocacao: a.dataLocacao,
+      dataDevolucao: hoje(),
+      valorMensal: a.valorMensal,
+      parcelasAbertas: parcelasAbertas.length,
+      totalEstimado: totalDevido.toFixed(2),
+      parcelas: parcelasAbertas,
+      status: 'pendente', // pendente | quitado
+      obs: obs || ''
+    });
+    a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido com '+parcelasAbertas.length+' parcela(s) em aberto. Dívida registrada para '+a.locatario+'. Total estimado: R$ '+totalDevido.toFixed(2), obs });
+  } else {
+    a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
+  }
+
   Object.assign(a, {
     status: 'disponivel', locatario: '', doc: '', tel: '', endereco: '',
     funcEntregou: '', funcRecolheu: funcRec, dataLocacao: '', valorMensal: '',
@@ -947,6 +1041,23 @@ function abrirDashboard() {
     return `<div class="info-row"><span class="info-key">#${a.num} ${esc(a.locatario)}</span><span class="info-val">${a.dataLocacao ? fmtDate(a.dataLocacao) : '—'} · ${a.parcelas ? a.parcelas.filter(p=>p.status==='pago').length : 0} parcelas pagas</span></div>`;
   }).join('');
 
+  // Dívidas pendentes
+  const todasDividas = [];
+  abrigos.forEach(a => (a.dividas||[]).filter(d => d.status === 'pendente').forEach(d => todasDividas.push({...d, abrigoNum: a.num, abrigoId: a.id})));
+  const dividasHtml = todasDividas.length > 0
+    ? '<div class="info-block"><div class="info-block-title" style="color:var(--red)">⚠️ Dívidas Pendentes ('+todasDividas.length+')</div>'
+      + todasDividas.map(d =>
+          '<div class="alert-venc" style="flex-direction:column;align-items:flex-start;gap:8px">'
+          + '<div style="display:flex;justify-content:space-between;width:100%">'
+          + '<div><strong>Abrigo #'+d.abrigoNum+'</strong> · '+esc(d.locatario)+'<br>'
+          + '<span style="font-size:11px;color:var(--muted)">'+d.parcelasAbertas+' parcela(s) · Devolvido em '+d.dataDevolucao+'</span></div>'
+          + '<div style="text-align:right"><span style="color:var(--red);font-family:var(--font-mono);font-size:13px">R$ '+d.totalEstimado+'</span><br>'
+          + '<button class="btn-pagar" style="margin-top:4px" onclick="abrirGerenciarDivida('+d.abrigoId+','+d.id+')">Gerenciar</button></div>'
+          + '</div></div>'
+        ).join('')
+      + '</div>'
+    : '';
+
   const listaRecebido = recebidoMesLista.map(r =>
     `<div class="info-row"><span class="info-key">#${r.abrigo} ${esc(r.locatario)} · Parc.${r.parcela}</span><span class="info-val" style="color:var(--green)">R$ ${r.valor.toFixed(2)} · ${r.forma}</span></div>`
   ).join('') || '<div style="color:var(--muted);font-size:13px">Nenhum pagamento este mês.</div>';
@@ -977,6 +1088,7 @@ function abrirDashboard() {
         <div class="info-block-title">Abrigos em locação</div>
         ${ocupRows || '<div style="color:var(--muted);font-size:13px">Nenhum abrigo alugado.</div>'}
       </div>
+      ${dividasHtml}
     </div>`;
   abrir('overlayDash');
 }
@@ -1031,6 +1143,76 @@ function abrirVencimentos() {
       ${alertas.length === 0 ? '<div style="color:var(--muted);font-size:13px;text-align:center;padding:32px 0">✅ Nenhum vencimento nos próximos 7 dias!</div>' : ''}
     </div>`;
   abrir('overlayVenc');
+}
+
+
+// ─── GERENCIAR DÍVIDA ─────────────────────────────────────
+function abrirGerenciarDivida(abrigoId, dividaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const d = (a.dividas||[]).find(x => x.id === dividaId);
+  if (!d) return;
+  const panel = document.getElementById('panelDash');
+
+  const parcelasHtml = (d.parcelas||[]).map(p => {
+    const statusLabel = p.status === 'pago' ? 'Pago' : p.status === 'atrasado' ? 'Atrasado' : 'Pendente';
+    const pgtoInfo = p.status === 'pago' ? ' · Pago em '+p.dataPagamento+' via '+p.formaPagamento+(p.valorPago?' · R$ '+p.valorPago:'') : '';
+    const btnPagar = p.status !== 'pago' ? '<button class="btn-pagar" onclick="pagarParcelaDivida('+abrigoId+','+dividaId+','+p.id+')">Registrar Pagamento</button>' : '';
+    return '<div class="parcela-item '+p.status+'">'
+      + '<div class="parcela-top"><span class="parcela-num">Parcela '+p.id+'</span><span class="parcela-badge '+p.status+'">'+statusLabel+'</span></div>'
+      + '<div class="parcela-info"><span>Venc: '+fmtDate(p.vencimento)+'</span></div>'
+      + (p.status === 'pago' ? '<div class="parcela-pgto">✓'+pgtoInfo+'</div>' : '')
+      + btnPagar + '</div>';
+  }).join('');
+
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">Dívida — '+esc(d.locatario)+'</div>'
+    +   '<div class="panel-sub">Abrigo #'+a.num+' · Devolvido em '+d.dataDevolucao+'</div></div>'
+    +   '<button class="close-btn" onclick="abrirDashboard()">←</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div class="fin-card" style="margin-bottom:16px">'
+    +     '<div class="info-row"><span class="info-key">Locatário</span><span class="info-val">'+esc(d.locatario)+'</span></div>'
+    +     '<div class="info-row"><span class="info-key">Telefone</span><span class="info-val">'+(d.tel||'—')+'</span></div>'
+    +     '<div class="info-row"><span class="info-key">Total estimado</span><span class="info-val" style="color:var(--red)">R$ '+d.totalEstimado+'</span></div>'
+    +   '</div>'
+    +   '<div class="info-block-title" style="margin-bottom:10px">Parcelas em aberto</div>'
+    +   parcelasHtml
+    +   '<div style="margin-top:16px;display:flex;gap:10px">'
+    +     '<button class="btn btn-green btn-sm" onclick="quitarDivida('+abrigoId+','+dividaId+')">✓ Marcar tudo como quitado</button>'
+    +     '<button class="btn btn-cancel btn-sm" onclick="abrirDashboard()">Voltar</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+async function pagarParcelaDivida(abrigoId, dividaId, parcelaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const d = (a.dividas||[]).find(x => x.id === dividaId);
+  const p = (d.parcelas||[]).find(x => x.id === parcelaId);
+  const forma = prompt('Forma de pagamento (PIX/Dinheiro/Boleto/Cartão):');
+  if (!forma) return;
+  const valor = prompt('Valor pago (R$):', d.valorMensal || '');
+  p.status = 'pago';
+  p.dataPagamento = hoje();
+  p.formaPagamento = forma;
+  p.valorPago = valor || d.valorMensal || '';
+  // Check if all paid
+  const todasPagas = d.parcelas.every(x => x.status === 'pago');
+  if (todasPagas) d.status = 'quitado';
+  a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: 'Pagamento de dívida — '+esc(d.locatario)+' · Parcela '+parcelaId+(valor?' · R$ '+valor:''), obs: '' });
+  await salvar();
+  abrirGerenciarDivida(abrigoId, dividaId);
+}
+
+async function quitarDivida(abrigoId, dividaId) {
+  if (!confirm('Marcar toda a dívida como quitada?')) return;
+  const a = abrigos.find(x => x.id === abrigoId);
+  const d = (a.dividas||[]).find(x => x.id === dividaId);
+  d.status = 'quitado';
+  d.parcelas.forEach(p => { if (p.status !== 'pago') { p.status = 'pago'; p.dataPagamento = hoje(); p.formaPagamento = 'Quitado'; } });
+  a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: 'Dívida de '+esc(d.locatario)+' marcada como quitada. Total: R$ '+d.totalEstimado, obs: '' });
+  await salvar();
+  abrirDashboard();
 }
 
 // ─── EXPORT ───────────────────────────────────────────────
