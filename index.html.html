@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abrigos — Controle de Locações</title>
+<script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e14; --surface: #0f1520; --surface2: #151d2e;
+    --border: #1e2d45; --border2: #243552; --text: #cdd6f4; --muted: #6272a4;
+    --green: #50fa7b; --green-bg: #0a2018; --green-border: #1a4a2e;
+    --blue: #8be9fd; --blue-bg: #081828; --blue-border: #0e3050;
+    --red: #ff5555; --red-bg: #280a0a; --red-border: #4a1010;
+    --yellow: #f1fa8c; --yellow-bg: #1e1c08; --yellow-border: #3a3510;
+    --purple: #bd93f9; --purple-bg: #1a0a28; --purple-border: #3a1a50;
+    --font-mono: 'IBM Plex Mono', monospace; --font: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  #loginScreen { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  #loadingScreen { display:none; align-items:center; justify-content:center; min-height:100vh; flex-direction:column; gap:16px; }
+  #app { display:none; }
+  .login-box { background:var(--surface); border:1px solid var(--border2); border-radius:16px; padding:40px 48px; text-align:center; max-width:380px; }
+  .login-icon { font-size:40px; margin-bottom:16px; }
+  .login-title { font-family:var(--font-mono); font-size:18px; font-weight:700; color:#f8f8f2; margin-bottom:8px; }
+  .login-sub { font-size:13px; color:var(--muted); margin-bottom:28px; line-height:1.6; }
+  .spinner { width:36px; height:36px; border:3px solid var(--border2); border-top-color:var(--green); border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-text { font-family:var(--font-mono); font-size:13px; color:var(--muted); }
+
+  header { background:var(--surface); border-bottom:1px solid var(--border); padding:0 28px; height:54px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
+  .logo { display:flex; align-items:center; gap:10px; }
+  .logo-icon { width:30px; height:30px; background:linear-gradient(135deg,#1a4a2e,#50fa7b22); border:1px solid var(--green-border); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:15px; }
+  .logo-title { font-family:var(--font-mono); font-weight:700; font-size:14px; letter-spacing:.08em; color:#f8f8f2; }
+  .logo-sub { font-family:var(--font-mono); font-size:11px; color:var(--muted); }
+  .header-right { display:flex; align-items:center; gap:10px; }
+  .user-badge { font-family:var(--font-mono); font-size:11px; color:var(--muted); background:var(--surface2); border:1px solid var(--border); padding:4px 10px; border-radius:6px; }
+  .save-status { font-family:var(--font-mono); font-size:11px; color:var(--green); opacity:0; transition:opacity .4s; }
+  .save-status.show { opacity:1; }
+  .btn-export { background:var(--surface2); border:1px solid var(--border2); color:var(--muted); padding:6px 14px; border-radius:7px; cursor:pointer; font-size:12px; font-family:var(--font-mono); transition:color .2s,border-color .2s; }
+  .btn-export:hover { color:var(--text); border-color:var(--blue-border); }
+
+  main { max-width:1200px; margin:0 auto; padding:28px 24px; }
+
+  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:24px; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; cursor:pointer; transition:border-color .2s,transform .15s; }
+  .stat-card:hover { transform:translateY(-1px); }
+  .stat-num { font-family:var(--font-mono); font-size:28px; font-weight:700; line-height:1; }
+  .stat-label { font-size:10px; color:var(--muted); margin-top:5px; letter-spacing:.1em; text-transform:uppercase; font-family:var(--font-mono); }
+
+  .filters { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; align-items:center; }
+  .search-input { background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 14px; border-radius:8px; font-size:13px; flex:1; min-width:220px; outline:none; transition:border-color .2s; }
+  .search-input:focus { border-color:var(--blue-border); }
+  .filter-btn { background:transparent; border:1px solid var(--border); color:var(--muted); padding:7px 14px; border-radius:8px; cursor:pointer; font-size:12px; font-family:var(--font-mono); transition:all .2s; white-space:nowrap; }
+  .filter-btn.active { background:var(--surface2); border-color:var(--blue); color:var(--blue); }
+  .filter-btn:hover:not(.active) { color:var(--text); border-color:var(--border2); }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:9px; }
+  .abrigo-card { border-radius:10px; padding:14px 15px; cursor:pointer; transition:transform .15s,box-shadow .15s; border:1px solid; }
+  .abrigo-card:hover { transform:translateY(-2px); }
+  .abrigo-card.disponivel { background:var(--green-bg); border-color:var(--green-border); }
+  .abrigo-card.alugado { background:var(--blue-bg); border-color:var(--blue-border); }
+  .abrigo-card.atraso { background:var(--red-bg); border-color:var(--red-border); }
+  .abrigo-card.retirada { background:var(--yellow-bg); border-color:var(--yellow-border); }
+  .abrigo-card:hover.disponivel { box-shadow:0 4px 20px #50fa7b18; }
+  .abrigo-card:hover.alugado { box-shadow:0 4px 20px #8be9fd18; }
+  .abrigo-card:hover.atraso { box-shadow:0 4px 20px #ff555528; }
+  .abrigo-card:hover.retirada { box-shadow:0 4px 20px #f1fa8c18; }
+  .card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:7px; }
+  .card-num { font-family:var(--font-mono); font-size:21px; font-weight:700; color:#f8f8f2; }
+  .card-dot { width:8px; height:8px; border-radius:50%; margin-top:5px; }
+  .disponivel .card-dot { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .alugado .card-dot { background:var(--blue); box-shadow:0 0 6px var(--blue); }
+  .atraso .card-dot { background:var(--red); box-shadow:0 0 6px var(--red); animation:pulse 1.5s infinite; }
+  .retirada .card-dot { background:var(--yellow); box-shadow:0 0 6px var(--yellow); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .card-status { font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; margin-bottom:5px; }
+  .disponivel .card-status { color:var(--green); }
+  .alugado .card-status { color:var(--blue); }
+  .atraso .card-status { color:var(--red); }
+  .retirada .card-status { color:var(--yellow); }
+  .card-name { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card-parcelas { font-size:11px; margin-top:4px; font-family:var(--font-mono); }
+  .empty-msg { text-align:center; color:var(--muted); padding:60px 0; font-size:14px; }
+
+  /* OVERLAY */
+  .overlay { position:fixed; inset:0; background:#000000cc; display:flex; align-items:center; justify-content:center; z-index:100; padding:16px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .overlay.open { opacity:1; pointer-events:all; }
+  .panel { background:var(--surface); border:1px solid var(--border2); border-radius:14px; width:100%; max-width:600px; max-height:95vh; overflow-y:auto; scroll-behavior:smooth; transform:translateY(12px); transition:transform .2s; }
+  .overlay.open .panel { transform:translateY(0); }
+  .panel-header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--surface); z-index:1; }
+  .panel-title { font-family:var(--font-mono); font-weight:700; font-size:14px; color:#f8f8f2; }
+  .panel-sub { font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:2px; }
+  .close-btn { background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; padding:2px 6px; }
+  .close-btn:hover { color:var(--text); }
+  .panel-body { padding:20px 24px 32px; }
+
+  .info-block { background:var(--bg); border-radius:10px; padding:16px; margin-bottom:14px; border:1px solid var(--border); }
+  .info-block-title { font-family:var(--font-mono); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:10px; }
+  .info-row { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); }
+  .info-row:last-child { border-bottom:none; }
+  .info-key { font-size:12px; color:var(--muted); }
+  .info-val { font-size:12px; color:var(--text); text-align:right; max-width:65%; }
+  .action-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+
+  /* PARCELAS */
+  .parcela-item { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:8px; }
+  .parcela-item.pago { border-color:var(--green-border); background:var(--green-bg); }
+  .parcela-item.atrasado { border-color:var(--red-border); background:var(--red-bg); }
+  .parcela-item.pendente { border-color:var(--border2); }
+  .parcela-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .parcela-num { font-family:var(--font-mono); font-size:12px; font-weight:700; color:#f8f8f2; }
+  .parcela-badge { font-family:var(--font-mono); font-size:9px; padding:2px 7px; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; }
+  .parcela-badge.pago { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+  .parcela-badge.atrasado { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); animation:pulse 1.5s infinite; }
+  .parcela-badge.pendente { background:var(--surface2); color:var(--muted); border:1px solid var(--border2); }
+  .parcela-info { display:flex; gap:16px; font-size:11px; color:var(--muted); margin-bottom:6px; }
+  .parcela-pgto { font-size:11px; color:var(--green); margin-top:4px; }
+  .parcela-multa { font-size:11px; color:var(--red); margin-top:2px; }
+  .btn-pagar { background:var(--green-bg); border:1px solid var(--green-border); color:var(--green); padding:5px 12px; border-radius:6px; cursor:pointer; font-size:11px; font-family:var(--font-mono); margin-top:6px; }
+  .btn-pagar:hover { opacity:.8; }
+
+  /* HISTÓRICO */
+  .hist-item { border-left:2px solid var(--border2); padding-left:12px; margin-bottom:10px; }
+  .hist-date { font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+  .hist-desc { font-size:13px; color:var(--text); margin-top:2px; }
+  .hist-obs { font-size:11px; color:var(--muted); margin-top:2px; }
+  .hist-tipo { display:inline-block; font-family:var(--font-mono); font-size:9px; letter-spacing:.06em; padding:2px 6px; border-radius:4px; margin-bottom:3px; text-transform:uppercase; }
+  .hist-tipo.locacao { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+  .hist-tipo.pagamento { background:var(--purple-bg); color:var(--purple); border:1px solid var(--purple-border); }
+  .hist-tipo.devolucao { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+  .hist-tipo.renovacao { background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue-border); }
+  .hist-tipo.retirada { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-border); }
+
+  /* FORM */
+  .form-group { margin-bottom:13px; }
+  .form-label { font-family:var(--font-mono); font-size:10px; color:var(--muted); display:block; margin-bottom:5px; text-transform:uppercase; letter-spacing:.08em; }
+  .form-input, .form-textarea, .form-select { width:100%; background:var(--bg); border:1px solid var(--border2); color:var(--text); padding:8px 11px; border-radius:7px; font-size:13px; font-family:var(--font); outline:none; transition:border-color .2s; }
+  .form-input:focus, .form-textarea:focus, .form-select:focus { border-color:var(--blue-border); }
+  .form-textarea { resize:none; }
+  .form-select option { background:var(--surface); }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .form-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
+  .form-section { font-family:var(--font-mono); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin:18px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+
+  .btn { padding:8px 17px; border-radius:8px; cursor:pointer; font-size:13px; font-family:var(--font); font-weight:500; border:none; transition:opacity .15s; }
+  .btn:hover { opacity:.85; }
+  .btn-login { background:var(--green-bg); border:1px solid var(--green-border); color:var(--green); padding:12px 28px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:600; width:100%; }
+  .btn-cancel { background:none; border:1px solid var(--border2); color:var(--muted); }
+  .btn-green { background:var(--green-bg); border:1px solid var(--green-border); color:var(--green); font-weight:600; }
+  .btn-blue { background:var(--blue-bg); border:1px solid var(--blue-border); color:var(--blue); }
+  .btn-red { background:var(--red-bg); border:1px solid var(--red-border); color:var(--red); font-weight:600; }
+  .btn-yellow { background:var(--yellow-bg); border:1px solid var(--yellow-border); color:var(--yellow); }
+  .btn-purple { background:var(--purple-bg); border:1px solid var(--purple-border); color:var(--purple); }
+  .btn-sm { padding:7px 14px; font-size:12px; }
+  .confirm-text { font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:14px; }
+  .badge { display:inline-block; font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:5px; font-weight:600; }
+  .badge-yellow { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-border); }
+  .badge-red { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+
+  .tabs { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .tab { background:none; border:none; color:var(--muted); padding:8px 16px; cursor:pointer; font-size:13px; font-family:var(--font); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .2s; }
+  .tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+
+  /* DASHBOARD / FINANCEIRO */
+  .dash-btn { background:var(--surface2); border:1px solid var(--border2); color:var(--muted); padding:6px 14px; border-radius:7px; cursor:pointer; font-size:12px; font-family:var(--font-mono); transition:color .2s,border-color .2s; }
+  .dash-btn:hover { color:var(--text); border-color:var(--blue-border); }
+  .fin-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+  .fin-card { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .fin-num { font-family:var(--font-mono); font-size:22px; font-weight:700; margin-bottom:4px; }
+  .fin-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .ocup-bar-wrap { background:var(--border); border-radius:4px; height:8px; margin-top:6px; }
+  .ocup-bar { background:var(--green); height:8px; border-radius:4px; transition:width .4s; }
+
+  /* VENCIMENTOS ALERTA */
+  .alert-venc { background:var(--yellow-bg); border:1px solid var(--yellow-border); border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+  .alert-venc-info { font-size:12px; color:var(--text); }
+  .alert-venc-dias { font-family:var(--font-mono); font-size:11px; color:var(--yellow); }
+
+  /* ANEXOS */
+  .anexo-drop { border:2px dashed var(--border2); border-radius:10px; padding:24px; text-align:center; cursor:pointer; transition:border-color .2s; margin-bottom:12px; }
+  .anexo-drop:hover,.anexo-drop.drag { border-color:var(--blue); }
+  .anexo-drop-text { font-size:13px; color:var(--muted); }
+  .anexo-item { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+  .anexo-nome { font-size:13px; color:var(--blue); cursor:pointer; text-decoration:none; }
+  .anexo-nome:hover { text-decoration:underline; }
+  .anexo-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+  .anexo-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:16px; padding:0 4px; }
+
+  /* MANUTENÇÃO */
+  .manut-badge { display:inline-block; font-family:var(--font-mono); font-size:9px; padding:2px 7px; border-radius:4px; text-transform:uppercase; background:#1a1228; color:#bd93f9; border:1px solid #3a1a50; }
+
+  /* RECIBO */
+  .recibo-wrap { background:#fff; color:#111; padding:32px; border-radius:8px; font-family:'IBM Plex Sans',sans-serif; font-size:13px; line-height:1.6; }
+  .recibo-titulo { font-size:18px; font-weight:700; text-align:center; margin-bottom:4px; }
+  .recibo-sub { font-size:12px; color:#666; text-align:center; margin-bottom:20px; }
+  .recibo-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee; }
+  .recibo-footer { margin-top:24px; text-align:center; font-size:11px; color:#999; }
+  @media (max-width:600px) {
+    .stats { grid-template-columns:repeat(3,1fr); }
+    .form-row,.form-row-3 { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-icon">🏗</div>
+    <div class="login-title">CONTROLE DE ABRIGOS</div>
+    <div class="login-sub">Faça login com sua conta Microsoft para acessar e sincronizar os dados com o SharePoint.</div>
+    <button class="btn-login" onclick="fazerLogin()">Entrar com conta Microsoft</button>
+  </div>
+</div>
+
+<div id="loadingScreen">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Carregando...</div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🏗</div>
+      <div><div class="logo-title">ABRIGOS</div><div class="logo-sub">controle de locações</div></div>
+    </div>
+    <div class="header-right">
+      <span class="user-badge" id="userBadge"></span>
+      <span class="save-status" id="saveStatus">Salvo ✓</span>
+      <button class="dash-btn" onclick="abrirDashboard()">📊 Financeiro</button>
+      <button class="dash-btn" onclick="abrirVencimentos()">🔔 Vencimentos</button>
+      <button class="btn-export" onclick="exportarCSV()">↓ Exportar CSV</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="stats">
+      <div class="stat-card" onclick="setFiltro('todos')"><div class="stat-num" id="sn-total" style="color:#8be9fd">33</div><div class="stat-label">Total</div></div>
+      <div class="stat-card" onclick="setFiltro('disponivel')"><div class="stat-num" id="sn-disponivel" style="color:#50fa7b">—</div><div class="stat-label">Disponíveis</div></div>
+      <div class="stat-card" onclick="setFiltro('alugado')"><div class="stat-num" id="sn-alugado" style="color:#8be9fd">—</div><div class="stat-label">Alugados</div></div>
+      <div class="stat-card" onclick="setFiltro('atraso')"><div class="stat-num" id="sn-atraso" style="color:#ff5555">—</div><div class="stat-label">Em Atraso</div></div>
+      <div class="stat-card" onclick="setFiltro('retirada')"><div class="stat-num" id="sn-retirada" style="color:#f1fa8c">—</div><div class="stat-label">Retirada</div></div>
+    </div>
+    <div class="filters">
+      <input class="search-input" id="searchInput" placeholder="Buscar nº, locatário, funcionário, endereço..." oninput="renderGrid()">
+      <button class="filter-btn active" id="fb-todos" onclick="setFiltro('todos')">Todos</button>
+      <button class="filter-btn" id="fb-disponivel" onclick="setFiltro('disponivel')">Disponível</button>
+      <button class="filter-btn" id="fb-alugado" onclick="setFiltro('alugado')">Alugado</button>
+      <button class="filter-btn" id="fb-atraso" onclick="setFiltro('atraso')">Em Atraso</button>
+      <button class="filter-btn" id="fb-retirada" onclick="setFiltro('retirada')">Retirada</button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty-msg" id="emptyMsg" style="display:none">Nenhum abrigo encontrado.</div>
+  </main>
+</div>
+
+<div class="overlay" id="overlayDetalhe" onclick="fecharSeOverlay(event,'overlayDetalhe')">
+  <div class="panel" id="panelDetalhe"></div>
+</div>
+<div class="overlay" id="overlayDash" onclick="fecharSeOverlay(event,'overlayDash')">
+  <div class="panel" style="max-width:700px" id="panelDash"></div>
+</div>
+<div class="overlay" id="overlayVenc" onclick="fecharSeOverlay(event,'overlayVenc')">
+  <div class="panel" id="panelVenc"></div>
+</div>
+<div class="overlay" id="overlayModal" onclick="fecharSeOverlay(event,'overlayModal')">
+  <div class="panel" id="panelModal"></div>
+</div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────
+const CLIENT_ID = 'a0ab05de-6867-47bf-9ed3-deef0af4e348';
+const TENANT_ID = '54a9fe16-e777-4a62-9f76-8de94f2be11a';
+const FILE_NAME = 'Documentos/Dados do abrigo/abrigos-dados.json';
+const SITE_ID = 'grupovagula2026.sharepoint.com,4cc5a2ac-671e-49ef-979d-b2ff1f24f30f,6024648f-b3e3-4f25-9558-153406b1dfbf';
+const TOTAL = 33;
+const SCOPES = ['Files.ReadWrite', 'Sites.ReadWrite.All', 'User.Read'];
+const STATUS_LABEL = { disponivel:'Disponível', alugado:'Alugado', atraso:'Em Atraso', retirada:'Retirada Solicitada' };
+const FORMAS_PGTO = ['PIX', 'Boleto', 'Dinheiro', 'Cartão'];
+
+let msalInstance = null;
+let accessToken = null;
+let abrigos = [];
+let filtroAtivo = 'todos';
+
+// ─── AUTH ─────────────────────────────────────────────────
+async function init() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}`, redirectUri: 'https://abrigos.netlify.app/' },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+  });
+  await msalInstance.initialize();
+  const resp = await msalInstance.handleRedirectPromise();
+  if (resp) { accessToken = resp.accessToken; await iniciarApp(resp.account); return; }
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const s = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+      accessToken = s.accessToken; await iniciarApp(accounts[0]);
+    } catch { mostrar('loginScreen'); }
+  } else { mostrar('loginScreen'); }
+}
+
+async function fazerLogin() {
+  if (!msalInstance) { alert('Aguarde...'); return; }
+  await msalInstance.loginRedirect({ scopes: SCOPES });
+}
+
+async function iniciarApp(account) {
+  mostrar('loadingScreen');
+  document.getElementById('loadingText').textContent = 'Carregando dados do SharePoint...';
+  document.getElementById('userBadge').textContent = account.username || account.name;
+  abrigos = await carregar();
+  mostrar('app');
+  renderGrid();
+  // Alert badge for vencimentos
+  setTimeout(() => {
+    const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+    let count = 0;
+    abrigos.forEach(a => (a.parcelas||[]).forEach(p => {
+      if (p.status === 'pago') return;
+      const diff = Math.ceil((new Date(p.vencimento+'T00:00:00') - hoje2) / 86400000);
+      if (diff <= 7) count++;
+    }));
+    if (count > 0) {
+      document.querySelector('[onclick="abrirVencimentos()"]').textContent = '🔔 Vencimentos (' + count + ')';
+      document.querySelector('[onclick="abrirVencimentos()"]').style.color = 'var(--yellow)';
+      document.querySelector('[onclick="abrirVencimentos()"]').style.borderColor = 'var(--yellow-border)';
+    }
+  }, 100);
+}
+
+// ─── SHAREPOINT ───────────────────────────────────────────
+async function gFetch(url, opts = {}) {
+  const res = await fetch('https://graph.microsoft.com/v1.0' + url, {
+    ...opts, headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (!res.ok && res.status !== 404) throw new Error(await res.text());
+  return res;
+}
+
+async function carregar() {
+  try {
+    const res = await gFetch(`/sites/${SITE_ID}/drive/root:/${FILE_NAME}:/content`);
+    if (res.status === 404) return dadosIniciais();
+    const data = await res.json();
+    return Array.isArray(data) ? data : dadosIniciais();
+  } catch { return dadosIniciais(); }
+}
+
+async function salvar() {
+  const blob = new Blob([JSON.stringify(abrigos, null, 2)], { type: 'application/json' });
+  await gFetch(`/sites/${SITE_ID}/drive/root:/${FILE_NAME}:/content`, {
+    method: 'PUT', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: blob
+  });
+  const el = document.getElementById('saveStatus');
+  el.textContent = 'Salvo no SharePoint ✓';
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─── DADOS INICIAIS ───────────────────────────────────────
+function dadosIniciais() {
+  return Array.from({ length: TOTAL }, (_, i) => ({
+    id: i + 1, num: String(i + 1).padStart(2, '0'),
+    status: 'disponivel',
+    locatario: '', doc: '', tel: '', endereco: '',
+    funcEntregou: '', funcRecolheu: '',
+    dataLocacao: '', valorMensal: '',
+    dataDevolucaoPrevista: '', multaAtraso: '',
+    obs: '', historico: [], parcelas: [], anexos: [], emManutencao: false
+  }));
+}
+
+// ─── PARCELAS ─────────────────────────────────────────────
+function gerarParcelas(dataLocacao, meses = 12) {
+  const parcelas = [];
+  const base = new Date(dataLocacao + 'T00:00:00');
+  for (let i = 1; i <= meses; i++) {
+    const d = new Date(base);
+    d.setMonth(d.getMonth() + i);
+    parcelas.push({
+      id: i,
+      vencimento: d.toISOString().split('T')[0],
+      status: 'pendente', // pendente | pago | atrasado
+      dataPagamento: '', formaPagamento: '', valorPago: '', obs: ''
+    });
+  }
+  return parcelas;
+}
+
+function atualizarStatusParcelas(a) {
+  if (!a.parcelas) return;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  a.parcelas.forEach(p => {
+    if (p.status === 'pago') return;
+    const v = new Date(p.vencimento + 'T00:00:00');
+    p.status = v < hoje ? 'atrasado' : 'pendente';
+  });
+}
+
+// ─── STATUS GERAL ─────────────────────────────────────────
+function calcStatus(a) {
+  if (a.status === 'disponivel' || a.status === 'retirada') return a.status;
+  atualizarStatusParcelas(a);
+  const temAtraso = (a.parcelas || []).some(p => p.status === 'atrasado');
+  return temAtraso ? 'atraso' : 'alugado';
+}
+
+// ─── RENDER GRID ──────────────────────────────────────────
+function renderGrid() {
+  const busca = document.getElementById('searchInput').value.toLowerCase();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('emptyMsg');
+  const filtrados = abrigos.filter(a => {
+    const st = calcStatus(a);
+    const mF = filtroAtivo === 'todos' || st === filtroAtivo;
+    const mB = !busca || a.num.includes(busca) || a.locatario.toLowerCase().includes(busca) || a.endereco.toLowerCase().includes(busca) || a.funcEntregou.toLowerCase().includes(busca);
+    return mF && mB;
+  });
+
+  const counts = { total: TOTAL, disponivel: 0, alugado: 0, atraso: 0, retirada: 0 };
+  abrigos.forEach(a => counts[calcStatus(a)]++);
+  document.getElementById('sn-total').textContent = counts.total;
+  document.getElementById('sn-disponivel').textContent = counts.disponivel;
+  document.getElementById('sn-alugado').textContent = counts.alugado;
+  document.getElementById('sn-atraso').textContent = counts.atraso;
+  document.getElementById('sn-retirada').textContent = counts.retirada;
+
+  if (!filtrados.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  grid.innerHTML = filtrados.map(a => {
+    const st = calcStatus(a);
+    const pagas = (a.parcelas || []).filter(p => p.status === 'pago').length;
+    const atrasadas = (a.parcelas || []).filter(p => p.status === 'atrasado').length;
+    const total = (a.parcelas || []).length;
+    let parcelasHtml = '';
+    if (st !== 'disponivel') {
+      const cor = atrasadas > 0 ? 'var(--red)' : 'var(--muted)';
+      parcelasHtml = '<div class="card-parcelas" style="color:'+cor+'">'+(pagas)+'/'+total+' pagas'+(atrasadas>0?' · '+atrasadas+' atrasada'+(atrasadas>1?'s':''):'')+'</div>';
+    }
+    return '<div class="abrigo-card '+st+'" onclick="abrirDetalhe('+a.id+')">'
+      + '<div class="card-top"><div class="card-num">#'+a.num+'</div><div class="card-dot"></div></div>'
+      + '<div class="card-status">'+STATUS_LABEL[st]+'</div>'
+      + (a.locatario ? '<div class="card-name">'+esc(a.locatario)+'</div>' : '')
+      + parcelasHtml
+      + (a.emManutencao ? '<div style="margin-top:4px"><span class="manut-badge">Manutenção</span></div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function setFiltro(f) {
+  filtroAtivo = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('fb-' + f)?.classList.add('active');
+  renderGrid();
+}
+
+// ─── DETALHE ──────────────────────────────────────────────
+function abrirDetalhe(id) {
+  const a = abrigos.find(x => x.id === id);
+  const st = calcStatus(a);
+  renderDetalhe(a, st, 'dados');
+  abrir('overlayDetalhe');
+}
+
+function renderDetalhe(a, st, tabAtiva = 'dados') {
+  const panel = document.getElementById('panelDetalhe');
+  const infoRows = [
+    ['Locatário', a.locatario], ['CPF/CNPJ', a.doc], ['Telefone', a.tel],
+    ['Endereço da Obra', a.endereco],
+    ['Funcionário Entregou', a.funcEntregou], ['Funcionário Recolheu', a.funcRecolheu],
+    ['Data Locação', a.dataLocacao ? fmtDate(a.dataLocacao) : ''],
+    ['Valor Mensal', a.valorMensal ? 'R$ ' + a.valorMensal : ''],
+    ['Multa por Atraso', a.multaAtraso ? 'R$ ' + a.multaAtraso : ''],
+    ['Devolução Prevista', a.dataDevolucaoPrevista ? fmtDate(a.dataDevolucaoPrevista) : ''],
+    ['Observações', a.obs]
+  ].filter(([, v]) => v);
+
+  // Parcelas HTML
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const parcelasHtml = (a.parcelas || []).map(p => {
+    const dias = p.status === 'atrasado' ? Math.floor((hoje - new Date(p.vencimento + 'T00:00:00')) / 86400000) : 0;
+    const multaVal = (dias > 0 && a.multaAtraso) ? (parseFloat(a.multaAtraso) * Math.ceil(dias / 30)).toFixed(2) : null;
+    const statusLabel = p.status === 'pago' ? 'Pago' : p.status === 'atrasado' ? 'Atrasado' : 'Pendente';
+    const atrasoSpan = p.status === 'atrasado' ? '<span style="color:var(--red)">'+dias+' dia'+(dias>1?'s':'')+' de atraso</span>' : '';
+    const pgtoDiv = p.status === 'pago' ? '<div class="parcela-pgto">✓ Pago em '+p.dataPagamento+' via '+p.formaPagamento+(p.valorPago?' · R$ '+p.valorPago:'')+(p.obs?' · '+esc(p.obs):'')+' <button onclick="gerarRecibo('+a.id+','+p.id+')" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:11px;margin-left:6px">🖨 Recibo</button></div>' : '';
+    const multaDiv = multaVal ? '<div class="parcela-multa">Multa estimada: R$ '+multaVal+'</div>' : '';
+    const pagarBtn = p.status !== 'pago' ? '<button class="btn-pagar" onclick="abrirPagamento('+a.id+','+p.id+')">Registrar Pagamento</button>' : '';
+    return '<div class="parcela-item '+p.status+'">'
+      + '<div class="parcela-top"><span class="parcela-num">Parcela '+p.id+'</span><span class="parcela-badge '+p.status+'">'+statusLabel+'</span></div>'
+      + '<div class="parcela-info"><span>Venc: '+fmtDate(p.vencimento)+'</span>'+atrasoSpan+'</div>'
+      + pgtoDiv + multaDiv + pagarBtn
+      + '</div>';
+  }).join('') || '<div style="color:var(--muted);font-size:13px">Nenhuma parcela gerada.</div>';
+
+  const btnMaisParcelas = a.status !== 'disponivel'
+    ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">'
+      + '<button class="btn btn-blue btn-sm" onclick="abrirAdicionarParcelas('+a.id+')">+ Adicionar mais parcelas</button>'
+      + '<span style="font-size:11px;color:var(--muted);margin-left:10px">Total: '+(a.parcelas||[]).length+' parcelas</span>'
+      + '</div>'
+    : '';
+
+  // Histórico HTML
+  const histHtml = (a.historico || []).map(h =>
+    '<div class="hist-item">'
+    + '<div class="hist-tipo '+h.tipo+'">'+h.tipo+'</div>'
+    + '<div class="hist-date">'+h.data+'</div>'
+    + '<div class="hist-desc">'+esc(h.desc)+'</div>'
+    + (h.obs ? '<div class="hist-obs">Obs: '+esc(h.obs)+'</div>' : '')
+    + '</div>'
+  ).join('') || '<div style="color:var(--muted);font-size:13px">Nenhum histórico.</div>';
+
+  // Anexos HTML
+    const anexosHtml = '<div class="anexo-drop" id="dropZone-'+a.id+'" onclick="document.getElementById(\'fileInput-'+a.id+'\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="handleDrop(event,'+a.id+')">'
+    + '<div class="anexo-drop-text">📎 Clique ou arraste arquivos aqui<br><span style=\"font-size:11px\">Contrato, fotos, comprovantes...</span></div>'
+    + '<input type="file" id="fileInput-'+a.id+'" style="display:none" multiple onchange="uploadAnexos('+a.id+',this.files)">'
+    + '</div>'
+    + ((a.anexos||[]).length === 0
+      ? '<div style="color:var(--muted);font-size:13px">Nenhum anexo.</div>'
+      : (a.anexos||[]).map(ax =>
+          '<div class="anexo-item">'
+          + '<div><div><a class="anexo-nome" href="'+ax.url+'" target="_blank">📄 '+esc(ax.nome)+'</a></div>'
+          + '<div class="anexo-meta">'+ax.data+' · '+ax.tamanho+'</div></div>'
+          + '<button class="anexo-del" onclick="deletarAnexo('+a.id+',\''+ax.id+'\')">×</button>'
+          + '</div>'
+        ).join('')
+    );
+
+  let actions = '';
+  if (st === 'disponivel') actions = '<button class="btn btn-green btn-sm" onclick="fechar(\'overlayDetalhe\');abrirModal(\'alugar\','+a.id+')">+ Alugar Abrigo</button>';
+  else if (st === 'alugado' || st === 'atraso') actions = '<button class="btn btn-yellow btn-sm" onclick="abrirModal(\'retirada\','+a.id+')">Solicitar Retirada</button>'
+    + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>';
+  if (st !== 'disponivel') actions += ' <button class="btn btn-sm" style="background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple)" onclick="toggleManutencao('+a.id+')">'+( a.emManutencao ? '✓ Em Manutenção' : '🔧 Manutenção')+'</button>';
+  else if (st === 'retirada') actions = '<button class="btn btn-red btn-sm" onclick="abrirModal(\'devolver\','+a.id+')">Confirmar Devolução</button>';
+
+  const tabDados = tabAtiva === 'dados' ? 'active' : '';
+  const tabParc = tabAtiva === 'parcelas' ? 'active' : '';
+  const tabHist = tabAtiva === 'historico' ? 'active' : '';
+  const tabAnex = tabAtiva === 'anexos' ? 'active' : '';
+  const atrasCount = (a.parcelas || []).filter(p => p.status === 'atrasado').length;
+  const anexCount = (a.anexos||[]).length;
+  const infoHtml = infoRows.length
+    ? '<div class="info-block">' + infoRows.map(([k,v]) => '<div class="info-row"><span class="info-key">'+k+'</span><span class="info-val">'+esc(v)+'</span></div>').join('') + '</div>'
+    : '<div style="color:var(--muted);font-size:13px">Abrigo disponível.</div>';
+
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">Abrigo #'+a.num+'</div><div class="panel-sub">'+STATUS_LABEL[st]+'</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayDetalhe\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div class="action-row">'+actions+'</div>'
+    +   '<div class="tabs">'
+    +     '<button class="tab '+tabDados+'" onclick="switchTab('+a.id+',\'dados\')">Dados</button>'
+    +     '<button class="tab '+tabParc+'" onclick="switchTab('+a.id+',\'parcelas\')">Parcelas '+(atrasCount>0?'🔴':'')+'</button>'
+    +     '<button class="tab '+tabHist+'" onclick="switchTab('+a.id+',\'historico\')">Histórico</button>'
+    +     '<button class="tab '+tabAnex+'" onclick="switchTab('+a.id+',\'anexos\')">Anexos'+(anexCount>0?' ('+anexCount+')':'')+'</button>'
+    +   '</div>'
+    +   '<div class="tab-content '+tabDados+'" id="tab-dados">'+infoHtml+'</div>'
+    +   '<div class="tab-content '+tabParc+'" id="tab-parcelas">'+parcelasHtml+btnMaisParcelas+'</div>'
+    +   '<div class="tab-content '+tabHist+'" id="tab-historico">'+histHtml+'</div>'
+    +   '<div class="tab-content '+tabAnex+'" id="tab-anexos">'+anexosHtml+'</div>'
+    + '</div>';
+}
+
+function switchTab(id, tab) {
+  const a = abrigos.find(x => x.id === id);
+  renderDetalhe(a, calcStatus(a), tab);
+}
+
+// ─── PAGAMENTO ────────────────────────────────────────────
+function abrirPagamento(abrigoId, parcelaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const p = a.parcelas.find(x => x.id === parcelaId);
+  const panel = document.getElementById('panelModal');
+  const todayVal = new Date().toISOString().split('T')[0];
+  const formasOpts = FORMAS_PGTO.map(f => '<option>'+f+'</option>').join('');
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">Registrar Pagamento</div><div class="panel-sub">Abrigo #'+a.num+' · Parcela '+p.id+' · Venc: '+fmtDate(p.vencimento)+'</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div class="form-row">'
+    +     '<div class="form-group"><label class="form-label">Data do Pagamento *</label><input class="form-input" type="date" id="fp-data" value="'+todayVal+'"></div>'
+    +     '<div class="form-group"><label class="form-label">Forma de Pagamento *</label><select class="form-select" id="fp-forma">'+formasOpts+'</select></div>'
+    +   '</div>'
+    +   '<div class="form-group"><label class="form-label">Valor Pago (R$)</label><input class="form-input" type="number" step="0.01" id="fp-valor" placeholder="'+(a.valorMensal||'0,00')+'"></div>'
+    +   '<div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="fp-obs" rows="2" placeholder="Ex: Pago junto com multa..."></textarea></div>'
+    +   '<div class="form-footer">'
+    +     '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+    +     '<button class="btn btn-purple" onclick="confirmarPagamento('+abrigoId+','+parcelaId+')">Confirmar Pagamento</button>'
+    +   '</div>'
+    + '</div>';
+  abrir('overlayModal'); document.getElementById('panelModal').scrollTop = 0;
+}
+
+async function confirmarPagamento(abrigoId, parcelaId) {
+  const data = v('fp-data'), forma = v('fp-forma');
+  if (!data || !forma) { alert('Preencha os campos obrigatórios'); return; }
+  const a = abrigos.find(x => x.id === abrigoId);
+  const p = a.parcelas.find(x => x.id === parcelaId);
+  const valor = v('fp-valor') || a.valorMensal || '';
+  const obs = v('fp-obs');
+  p.status = 'pago';
+  p.dataPagamento = fmtDate(data);
+  p.formaPagamento = forma;
+  p.valorPago = valor;
+  p.obs = obs;
+  a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: 'Parcela '+p.id+' paga via '+forma+(valor?' · R$ '+valor:''), obs });
+  fechar('overlayModal');
+  renderDetalhe(a, calcStatus(a), 'parcelas');
+  renderGrid();
+  await salvar();
+}
+
+// ─── MODAIS ───────────────────────────────────────────────
+function abrirModal(tipo, id) {
+  const a = abrigos.find(x => x.id === id);
+  const panel = document.getElementById('panelModal');
+  let html = '';
+
+  if (tipo === 'alugar') {
+    html = `<div class="panel-header"><div><div class="panel-title">Alugar Abrigo #${a.num}</div></div><button class="close-btn" onclick="fechar('overlayModal')">×</button></div>
+    <div class="panel-body">
+      <div class="form-section">Dados do Locatário</div>
+      <div class="form-group"><label class="form-label">Nome do Locatário *</label><input class="form-input" id="f-loc" placeholder="Nome completo"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CPF / CNPJ</label><input class="form-input" id="f-doc" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label class="form-label">Telefone *</label><input class="form-input" id="f-tel" placeholder="(44) 00000-0000"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Endereço da Obra *</label><input class="form-input" id="f-end" placeholder="Rua, número, bairro, cidade..."></div>
+      <div class="form-section">Dados da Entrega</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Funcionário que Entregou *</label><input class="form-input" id="f-func" placeholder="Nome do funcionário"></div>
+        <div class="form-group"><label class="form-label">Data da Locação *</label><input class="form-input" type="date" id="f-dloc"></div>
+      </div>
+      <div class="form-section">Valores e Prazos</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Valor Mensal (R$) *</label><input class="form-input" type="number" step="0.01" id="f-val" placeholder="0,00"></div>
+        <div class="form-group"><label class="form-label">Multa por Atraso/mês (R$)</label><input class="form-input" type="number" step="0.01" id="f-multa" placeholder="Opcional"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Data Prevista de Devolução</label><input class="form-input" type="date" id="f-ddev"></div>
+      <div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="f-obs" rows="2" placeholder="Informações adicionais..."></textarea></div>
+      <div class="form-footer">
+        <button class="btn btn-cancel" onclick="fechar('overlayModal')">Cancelar</button>
+        <button class="btn btn-green" onclick="confirmarAlugar(${id})">Confirmar Locação</button>
+      </div>
+    </div>`;
+  } else if (tipo === 'editarLocacao') {
+    html = `<div class="panel-header"><div><div class="panel-title">Editar Dados #${a.num}</div></div><button class="close-btn" onclick="fechar('overlayModal')">×</button></div>
+    <div class="panel-body">
+      <div class="form-group"><label class="form-label">Locatário</label><input class="form-input" id="f-loc" value="${esc(a.locatario)}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CPF / CNPJ</label><input class="form-input" id="f-doc" value="${esc(a.doc)}"></div>
+        <div class="form-group"><label class="form-label">Telefone</label><input class="form-input" id="f-tel" value="${esc(a.tel)}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Endereço</label><input class="form-input" id="f-end" value="${esc(a.endereco)}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Valor Mensal (R$)</label><input class="form-input" type="number" step="0.01" id="f-val" value="${a.valorMensal}"></div>
+        <div class="form-group"><label class="form-label">Multa por Atraso/mês (R$)</label><input class="form-input" type="number" step="0.01" id="f-multa" value="${a.multaAtraso}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Data Prevista de Devolução</label><input class="form-input" type="date" id="f-ddev" value="${a.dataDevolucaoPrevista}"></div>
+      <div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="f-obs" rows="2">${esc(a.obs)}</textarea></div>
+      <div class="form-footer">
+        <button class="btn btn-cancel" onclick="fechar('overlayModal')">Cancelar</button>
+        <button class="btn btn-blue" onclick="confirmarEdicao(${id})">Salvar Alterações</button>
+      </div>
+    </div>`;
+  } else if (tipo === 'devolver') {
+    html = `<div class="panel-header"><div><div class="panel-title">Confirmar Devolução #${a.num}</div></div><button class="close-btn" onclick="fechar('overlayModal')">×</button></div>
+    <div class="panel-body">
+      <p class="confirm-text">O abrigo será liberado e todo o histórico preservado. Locatário: <strong style="color:var(--text)">${esc(a.locatario)}</strong></p>
+      <div class="form-group"><label class="form-label">Funcionário que Recolheu</label><input class="form-input" id="f-func-rec" placeholder="Nome do funcionário"></div>
+      <div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="f-obs-dev" rows="3" placeholder="Ex: Faturado no Gestão Click, devolvido em boas condições..."></textarea></div>
+      <div class="form-footer">
+        <button class="btn btn-cancel" onclick="fechar('overlayModal')">Cancelar</button>
+        <button class="btn btn-red" onclick="confirmarDevolver(${id})">Confirmar Devolução</button>
+      </div>
+    </div>`;
+  } else if (tipo === 'retirada') {
+    html = `<div class="panel-header"><div><div class="panel-title">Solicitar Retirada #${a.num}</div></div><button class="close-btn" onclick="fechar('overlayModal')">×</button></div>
+    <div class="panel-body">
+      <p class="confirm-text">O abrigo ficará como <span class="badge badge-yellow">Retirada Solicitada</span> até você confirmar a devolução física.</p>
+      <p class="confirm-text">Após faturar no <strong style="color:var(--text)">Gestão Click</strong>, volte e clique em <span class="badge badge-red">Confirmar Devolução</span>.</p>
+      <div class="form-footer">
+        <button class="btn btn-cancel" onclick="fechar('overlayModal')">Cancelar</button>
+        <button class="btn btn-yellow" onclick="confirmarRetirada(${id})">Marcar Retirada Solicitada</button>
+      </div>
+    </div>`;
+  }
+
+  panel.innerHTML = html;
+  abrir('overlayModal');
+}
+
+// ─── AÇÕES ────────────────────────────────────────────────
+async function confirmarAlugar(id) {
+  const loc = v('f-loc'), tel = v('f-tel'), end = v('f-end'), func = v('f-func'), dloc = v('f-dloc'), val = v('f-val');
+  if (!loc || !tel || !end || !func || !dloc || !val) { alert('Preencha os campos obrigatórios (*)'); return; }
+  const a = abrigos.find(x => x.id === id);
+  Object.assign(a, {
+    status: 'alugado', locatario: loc, doc: v('f-doc'), tel, endereco: end,
+    funcEntregou: func, dataLocacao: dloc, valorMensal: val,
+    multaAtraso: v('f-multa'), dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs'),
+    parcelas: gerarParcelas(dloc)
+  });
+  a.historico.unshift({ tipo: 'locacao', data: hoje(), desc: 'Alugado para '+loc+' — '+end+' | Entregue por: '+func, obs: v('f-obs') });
+  fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'parcelas'); abrir('overlayDetalhe'); }, 150);
+  await salvar();
+}
+
+async function confirmarEdicao(id) {
+  const a = abrigos.find(x => x.id === id);
+  Object.assign(a, {
+    locatario: v('f-loc'), doc: v('f-doc'), tel: v('f-tel'), endereco: v('f-end'),
+    valorMensal: v('f-val'), multaAtraso: v('f-multa'),
+    dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs')
+  });
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Dados da locação atualizados', obs: '' });
+  fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
+  await salvar();
+}
+
+async function confirmarDevolver(id) {
+  const a = abrigos.find(x => x.id === id);
+  const funcRec = v('f-func-rec'), obs = v('f-obs-dev');
+  a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
+  Object.assign(a, {
+    status: 'disponivel', locatario: '', doc: '', tel: '', endereco: '',
+    funcEntregou: '', funcRecolheu: funcRec, dataLocacao: '', valorMensal: '',
+    multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: []
+  });
+  fechar('overlayModal'); fechar('overlayDetalhe'); renderGrid();
+  await salvar();
+}
+
+async function confirmarRetirada(id) {
+  const a = abrigos.find(x => x.id === id);
+  a.status = 'retirada';
+  a.historico.unshift({ tipo: 'retirada', data: hoje(), desc: 'Retirada solicitada por '+a.locatario, obs: '' });
+  fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
+  await salvar();
+}
+
+
+// ─── ADICIONAR PARCELAS ───────────────────────────────────
+function abrirAdicionarParcelas(id) {
+  const a = abrigos.find(x => x.id === id);
+  const ultimaParcela = a.parcelas[a.parcelas.length - 1];
+  const ultimaData = ultimaParcela ? ultimaParcela.vencimento : a.dataLocacao;
+  const panel = document.getElementById('panelModal');
+  const ultLabel = ultimaParcela ? fmtDate(ultimaParcela.vencimento) : '—';
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">Adicionar Parcelas</div>'
+    +   '<div class="panel-sub">Abrigo #'+a.num+' · Última parcela: '+ultLabel+'</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div class="form-group"><label class="form-label">Quantas parcelas adicionar?</label>'
+    +   '<select class="form-select" id="f-qtd-parcelas">'
+    +     '<option value="1">1 mês</option><option value="3">3 meses</option>'
+    +     '<option value="6">6 meses</option><option value="12" selected>12 meses</option>'
+    +     '<option value="24">24 meses</option>'
+    +   '</select></div>'
+    +   '<p class="confirm-text" style="margin-top:8px">As novas parcelas serão geradas a partir do mês seguinte à última existente.</p>'
+    +   '<div class="form-footer">'
+    +     '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+    +     '<button class="btn btn-blue" onclick="confirmarAdicionarParcelas('+id+')">Adicionar Parcelas</button>'
+    +   '</div>'
+    + '</div>';
+  abrir('overlayModal');
+}
+
+async function confirmarAdicionarParcelas(id) {
+  const a = abrigos.find(x => x.id === id);
+  const qtd = parseInt(document.getElementById('f-qtd-parcelas').value);
+  const ultimaParcela = a.parcelas[a.parcelas.length - 1];
+  const baseDate = ultimaParcela ? new Date(ultimaParcela.vencimento + 'T00:00:00') : new Date(a.dataLocacao + 'T00:00:00');
+  const ultimoId = ultimaParcela ? ultimaParcela.id : 0;
+  for (let i = 1; i <= qtd; i++) {
+    const d = new Date(baseDate);
+    d.setMonth(d.getMonth() + i);
+    a.parcelas.push({
+      id: ultimoId + i,
+      vencimento: d.toISOString().split('T')[0],
+      status: 'pendente',
+      dataPagamento: '', formaPagamento: '', valorPago: '', obs: ''
+    });
+  }
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: qtd+' parcela'+(qtd>1?'s':'')+' adicionada'+(qtd>1?'s':'')+'. Total: '+a.parcelas.length+' parcelas.', obs: '' });
+  fechar('overlayModal');
+  renderDetalhe(a, calcStatus(a), 'parcelas');
+  renderGrid();
+  await salvar();
+}
+
+
+// ─── MANUTENÇÃO ───────────────────────────────────────────
+async function toggleManutencao(id) {
+  const a = abrigos.find(x => x.id === id);
+  a.emManutencao = !a.emManutencao;
+  a.historico.unshift({ tipo: a.emManutencao ? 'retirada' : 'renovacao', data: hoje(), desc: a.emManutencao ? 'Abrigo enviado para manutenção' : 'Abrigo retornou da manutenção', obs: '' });
+  renderDetalhe(a, calcStatus(a), 'dados');
+  renderGrid();
+  await salvar();
+}
+
+// ─── ANEXOS ───────────────────────────────────────────────
+function handleDrop(e, id) {
+  e.preventDefault();
+  document.getElementById('dropZone-' + id)?.classList.remove('drag');
+  uploadAnexos(id, e.dataTransfer.files);
+}
+
+async function uploadAnexos(id, files) {
+  const a = abrigos.find(x => x.id === id);
+  if (!a.anexos) a.anexos = [];
+  for (const file of files) {
+    try {
+      const path = `abrigos-anexos/abrigo-${a.num}/${Date.now()}-${file.name}`;
+      const res = await gFetch(`/sites/${SITE_ID}/drive/root:/${path}:/content`, {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      });
+      const data = await res.json();
+      a.anexos.push({
+        id: data.id,
+        nome: file.name,
+        url: data.webUrl,
+        data: hoje(),
+        tamanho: formatBytes(file.size)
+      });
+    } catch(e) { alert('Erro ao enviar ' + file.name); }
+  }
+  renderDetalhe(a, calcStatus(a), 'anexos');
+  await salvar();
+}
+
+async function deletarAnexo(abrigoId, anexoId) {
+  if (!confirm('Remover este anexo?')) return;
+  const a = abrigos.find(x => x.id === abrigoId);
+  try {
+    await gFetch(`/sites/${SITE_ID}/drive/items/${anexoId}`, { method: 'DELETE' });
+  } catch(e) {}
+  a.anexos = (a.anexos || []).filter(ax => ax.id !== anexoId);
+  renderDetalhe(a, calcStatus(a), 'anexos');
+  await salvar();
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// ─── RECIBO ───────────────────────────────────────────────
+function gerarRecibo(abrigoId, parcelaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const p = a.parcelas.find(x => x.id === parcelaId);
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>body{font-family:'IBM Plex Sans',sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#111}
+    h1{font-size:20px;text-align:center;margin-bottom:4px}
+    .sub{text-align:center;color:#666;font-size:12px;margin-bottom:28px}
+    .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:13px}
+    .key{color:#666}.val{font-weight:500}
+    .total{font-size:16px;font-weight:700;color:#111;margin-top:16px;text-align:right}
+    .assin{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:48px}
+    .assin-line{border-top:1px solid #333;padding-top:8px;font-size:11px;color:#666;text-align:center}
+    .footer{text-align:center;font-size:10px;color:#bbb;margin-top:32px}
+    @media print{button{display:none}}</style></head><body>
+    <h1>RECIBO DE PAGAMENTO</h1>
+    <div class="sub">Grupo Vagula · Locação de Abrigo Móvel</div>
+    <div class="row"><span class="key">Abrigo Nº</span><span class="val">${a.num}</span></div>
+    <div class="row"><span class="key">Locatário</span><span class="val">${a.locatario}</span></div>
+    <div class="row"><span class="key">CPF / CNPJ</span><span class="val">${a.doc || '—'}</span></div>
+    <div class="row"><span class="key">Endereço da Obra</span><span class="val">${a.endereco}</span></div>
+    <div class="row"><span class="key">Parcela Nº</span><span class="val">${p.id}</span></div>
+    <div class="row"><span class="key">Vencimento</span><span class="val">${fmtDate(p.vencimento)}</span></div>
+    <div class="row"><span class="key">Data do Pagamento</span><span class="val">${p.dataPagamento}</span></div>
+    <div class="row"><span class="key">Forma de Pagamento</span><span class="val">${p.formaPagamento}</span></div>
+    ${p.obs ? `<div class="row"><span class="key">Observações</span><span class="val">${p.obs}</span></div>` : ''}
+    <div class="total">Valor Pago: R$ ${p.valorPago || a.valorMensal}</div>
+    <div class="assin">
+      <div class="assin-line">Locador / Grupo Vagula</div>
+      <div class="assin-line">Locatário: ${a.locatario}</div>
+    </div>
+    <div class="footer">Emitido em ${hoje()} · Abrigos — Controle de Locações</div>
+    <br><button onclick="window.print()" style="padding:8px 20px;cursor:pointer;margin-right:8px">🖨 Imprimir</button>
+    <button onclick="window.close()" style="padding:8px 20px;cursor:pointer">Fechar</button>
+    </body></html>`);
+  win.document.close();
+}
+
+// ─── DASHBOARD FINANCEIRO ─────────────────────────────────
+function abrirDashboard() {
+  const panel = document.getElementById('panelDash');
+  const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+  const mesAtual = hoje2.getMonth();
+  const anoAtual = hoje2.getFullYear();
+
+  let totalReceber = 0, recebidoMes = 0, inadimplencia = 0, totalOcupados = 0;
+  const recebidoMesLista = [];
+
+  abrigos.forEach(a => {
+    const st = calcStatus(a);
+    if (st !== 'disponivel') totalOcupados++;
+    (a.parcelas || []).forEach(p => {
+      const val = parseFloat(p.valorPago || a.valorMensal || 0);
+      if (p.status !== 'pago') {
+        const v = new Date(p.vencimento + 'T00:00:00');
+        if (v <= hoje2) inadimplencia += parseFloat(a.valorMensal || 0);
+        else totalReceber += parseFloat(a.valorMensal || 0);
+      } else {
+        const parts = p.dataPagamento.split('/');
+        if (parts.length === 3) {
+          const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+          if (d.getMonth() === mesAtual && d.getFullYear() === anoAtual) {
+            recebidoMes += val;
+            recebidoMesLista.push({ abrigo: a.num, locatario: a.locatario, parcela: p.id, valor: val, forma: p.formaPagamento });
+          }
+        }
+      }
+    });
+  });
+
+  const taxaOcup = Math.round((totalOcupados / TOTAL) * 100);
+
+  // Ocupação por mês (últimos 6 meses)
+  const ocupRows = abrigos.filter(a => a.status !== 'disponivel' && a.dataLocacao).map(a => {
+    const diasTotal = a.parcelas ? a.parcelas.filter(p => p.status === 'pago').length * 30 : 0;
+    return `<div class="info-row"><span class="info-key">#${a.num} ${esc(a.locatario)}</span><span class="info-val">${a.dataLocacao ? fmtDate(a.dataLocacao) : '—'} · ${a.parcelas ? a.parcelas.filter(p=>p.status==='pago').length : 0} parcelas pagas</span></div>`;
+  }).join('');
+
+  const listaRecebido = recebidoMesLista.map(r =>
+    `<div class="info-row"><span class="info-key">#${r.abrigo} ${esc(r.locatario)} · Parc.${r.parcela}</span><span class="info-val" style="color:var(--green)">R$ ${r.valor.toFixed(2)} · ${r.forma}</span></div>`
+  ).join('') || '<div style="color:var(--muted);font-size:13px">Nenhum pagamento este mês.</div>';
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div><div class="panel-title">📊 Resumo Financeiro</div><div class="panel-sub">${new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div></div>
+      <button class="close-btn" onclick="fechar('overlayDash')">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="fin-grid">
+        <div class="fin-card"><div class="fin-num" style="color:var(--green)">R$ ${recebidoMes.toFixed(2)}</div><div class="fin-label">Recebido este mês</div></div>
+        <div class="fin-card"><div class="fin-num" style="color:var(--red)">R$ ${inadimplencia.toFixed(2)}</div><div class="fin-label">Inadimplência</div></div>
+        <div class="fin-card"><div class="fin-num" style="color:var(--blue)">R$ ${totalReceber.toFixed(2)}</div><div class="fin-label">A receber (futuro)</div></div>
+      </div>
+      <div class="fin-card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span class="fin-label">Taxa de Ocupação</span>
+          <span style="font-family:var(--font-mono);font-size:13px;color:var(--green)">${taxaOcup}% · ${totalOcupados}/${TOTAL} abrigos</span>
+        </div>
+        <div class="ocup-bar-wrap"><div class="ocup-bar" style="width:${taxaOcup}%"></div></div>
+      </div>
+      <div class="info-block">
+        <div class="info-block-title">Recebimentos deste mês</div>
+        ${listaRecebido}
+      </div>
+      <div class="info-block">
+        <div class="info-block-title">Abrigos em locação</div>
+        ${ocupRows || '<div style="color:var(--muted);font-size:13px">Nenhum abrigo alugado.</div>'}
+      </div>
+    </div>`;
+  abrir('overlayDash');
+}
+
+// ─── VENCIMENTOS ──────────────────────────────────────────
+function abrirVencimentos() {
+  const panel = document.getElementById('panelVenc');
+  const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+  const em7dias = new Date(hoje2); em7dias.setDate(em7dias.getDate() + 7);
+
+  const alertas = [];
+  abrigos.forEach(a => {
+    (a.parcelas || []).forEach(p => {
+      if (p.status === 'pago') return;
+      const v = new Date(p.vencimento + 'T00:00:00');
+      const diff = Math.ceil((v - hoje2) / 86400000);
+      if (diff <= 7) {
+        alertas.push({ a, p, diff, v });
+      }
+    });
+  });
+  alertas.sort((x, y) => x.diff - y.diff);
+
+  const atrasados = alertas.filter(x => x.diff < 0);
+  const hoje3 = alertas.filter(x => x.diff === 0);
+  const proximos = alertas.filter(x => x.diff > 0);
+
+  function renderAlerta(x) {
+    const cor = x.diff < 0 ? 'var(--red)' : x.diff === 0 ? 'var(--yellow)' : 'var(--text)';
+    const label = x.diff < 0 ? `${Math.abs(x.diff)} dia${Math.abs(x.diff)>1?'s':''} de atraso` : x.diff === 0 ? 'Vence hoje!' : `Vence em ${x.diff} dia${x.diff>1?'s':''}`;
+    return `<div class="alert-venc">
+      <div class="alert-venc-info">
+        <strong>Abrigo #${x.a.num}</strong> · ${esc(x.a.locatario)}<br>
+        <span style="font-size:11px;color:var(--muted)">Parcela ${x.p.id} · R$ ${x.a.valorMensal || '—'}</span>
+      </div>
+      <div>
+        <div class="alert-venc-dias" style="color:${cor}">${label}</div>
+        <button class="btn-pagar" style="margin-top:4px" onclick="fechar('overlayVenc');abrirDetalhe(${x.a.id})">Ver abrigo</button>
+      </div>
+    </div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div><div class="panel-title">🔔 Vencimentos</div><div class="panel-sub">Próximos 7 dias e atrasados</div></div>
+      <button class="close-btn" onclick="fechar('overlayVenc')">×</button>
+    </div>
+    <div class="panel-body">
+      ${atrasados.length ? `<div class="info-block-title" style="color:var(--red);margin-bottom:10px">Em atraso (${atrasados.length})</div>${atrasados.map(renderAlerta).join('')}` : ''}
+      ${hoje3.length ? `<div class="info-block-title" style="color:var(--yellow);margin:12px 0 10px">Vence hoje (${hoje3.length})</div>${hoje3.map(renderAlerta).join('')}` : ''}
+      ${proximos.length ? `<div class="info-block-title" style="margin:12px 0 10px">Próximos 7 dias (${proximos.length})</div>${proximos.map(renderAlerta).join('')}` : ''}
+      ${alertas.length === 0 ? '<div style="color:var(--muted);font-size:13px;text-align:center;padding:32px 0">✅ Nenhum vencimento nos próximos 7 dias!</div>' : ''}
+    </div>`;
+  abrir('overlayVenc');
+}
+
+// ─── EXPORT ───────────────────────────────────────────────
+function exportarCSV() {
+  const cols = ['Nº', 'Status', 'Locatário', 'CPF/CNPJ', 'Telefone', 'Endereço', 'Func.Entregou', 'Data Locação', 'Valor Mensal', 'Multa Atraso', 'Dev.Prevista', 'Parcelas Pagas', 'Parcelas Atrasadas', 'Observações'];
+  const rows = abrigos.map(a => {
+    const pagas = (a.parcelas || []).filter(p => p.status === 'pago').length;
+    const atrasadas = (a.parcelas || []).filter(p => p.status === 'atrasado').length;
+    return [a.num, STATUS_LABEL[calcStatus(a)], a.locatario, a.doc, a.tel, a.endereco, a.funcEntregou, a.dataLocacao ? fmtDate(a.dataLocacao) : '', a.valorMensal ? 'R$ ' + a.valorMensal : '', a.multaAtraso ? 'R$ ' + a.multaAtraso : '', a.dataDevolucaoPrevista ? fmtDate(a.dataDevolucaoPrevista) : '', pagas, atrasadas, a.obs];
+  });
+  const csv = [cols, ...rows].map(r => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = `abrigos_${hoje().replace(/\//g, '-')}.csv`; el.click();
+}
+
+// ─── UTILS ────────────────────────────────────────────────
+function v(id) { return (document.getElementById(id)?.value || '').trim(); }
+function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function hoje() { return new Date().toLocaleDateString('pt-BR'); }
+function fmtDate(s) { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; }
+function mostrar(id) {
+  ['loginScreen', 'loadingScreen', 'app'].forEach(i => {
+    const el = document.getElementById(i);
+    el.style.display = i === id ? (i === 'loadingScreen' ? 'flex' : 'block') : 'none';
+  });
+  if (id === 'loginScreen') document.getElementById('loginScreen').style.display = 'flex';
+}
+function abrir(id) { document.getElementById(id).classList.add('open'); }
+function fechar(id) { document.getElementById(id).classList.remove('open'); }
+function fecharSeOverlay(e, id) { if (e.target.id === id) fechar(id); }
+
+init();
+</script>
+</body>
+</html>
