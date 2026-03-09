@@ -582,8 +582,10 @@ function renderDetalhe(a, st, tabAtiva = 'dados') {
   if (st === 'disponivel') actions = '<button class="btn btn-green btn-sm" onclick="fechar(\'overlayDetalhe\');abrirModal(\'alugar\','+a.id+')">+ Alugar Abrigo</button>';
   else if (st === 'alugado' || st === 'atraso') actions = '<button class="btn btn-yellow btn-sm" onclick="abrirModal(\'retirada\','+a.id+')">Solicitar Retirada</button>'
     + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>';
+  else if (st === 'retirada') actions = '<button class="btn btn-red btn-sm" onclick="abrirModal(\'devolver\','+a.id+')">Confirmar Devolução</button>'
+    + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>'
+    + ' <button class="btn btn-cancel btn-sm" onclick="cancelarRetirada('+a.id+')">↩ Cancelar Retirada</button>';
   if (st !== 'disponivel') actions += ' <button class="btn btn-sm" style="background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple)" onclick="toggleManutencao('+a.id+')">'+( a.emManutencao ? '✓ Em Manutenção' : '🔧 Manutenção')+'</button>';
-  else if (st === 'retirada') actions = '<button class="btn btn-red btn-sm" onclick="abrirModal(\'devolver\','+a.id+')">Confirmar Devolução</button>';
 
   const tabDados = tabAtiva === 'dados' ? 'active' : '';
   const tabParc = tabAtiva === 'parcelas' ? 'active' : '';
@@ -837,6 +839,16 @@ async function finalizarDevolucao(id, opcao, funcRec, obs) {
     multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: []
   });
   fechar('overlayModal'); fechar('overlayDetalhe'); renderGrid();
+  await salvar();
+}
+
+async function cancelarRetirada(id) {
+  if (!confirm('Cancelar a solicitação de retirada? O abrigo voltará para "Alugado".')) return;
+  const a = abrigos.find(x => x.id === id);
+  a.status = 'alugado';
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Retirada cancelada. Abrigo voltou para alugado.', obs: '' });
+  renderDetalhe(a, calcStatus(a), 'dados');
+  renderGrid();
   await salvar();
 }
 
