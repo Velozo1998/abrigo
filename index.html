@@ -278,7 +278,8 @@
 // ─── CONFIG ──────────────────────────────────────────────
 const CLIENT_ID = 'a0ab05de-6867-47bf-9ed3-deef0af4e348';
 const TENANT_ID = '54a9fe16-e777-4a62-9f76-8de94f2be11a';
-const FILE_NAME = 'Documentos/Dados do abrigo/abrigos-dados.json';
+const FILE_NAME = 'Dados do abrigo/abrigos-dados.json';
+const DRIVE_ID = 'b!rKLFTB5n70mXnbL_HyTzD49kJGDjsyVPlVgVNAax3797bAbf1jW3SaFFpFQ7k8C9';
 const SITE_ID = 'grupovagula2026.sharepoint.com,4cc5a2ac-671e-49ef-979d-b2ff1f24f30f,6024648f-b3e3-4f25-9558-153406b1dfbf';
 const TOTAL = 33;
 const SCOPES = ['Files.ReadWrite', 'Sites.ReadWrite.All', 'User.Read'];
@@ -348,7 +349,7 @@ async function gFetch(url, opts = {}) {
 
 async function carregar() {
   try {
-    const res = await gFetch(`/sites/${SITE_ID}/drive/root:/${FILE_NAME}:/content`);
+    const res = await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}:/content`);
     if (res.status === 404) return dadosIniciais();
     const data = await res.json();
     return Array.isArray(data) ? data : dadosIniciais();
@@ -357,7 +358,7 @@ async function carregar() {
 
 async function salvar() {
   const blob = new Blob([JSON.stringify(abrigos, null, 2)], { type: 'application/json' });
-  await gFetch(`/sites/${SITE_ID}/drive/root:/${FILE_NAME}:/content`, {
+  await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}:/content`, {
     method: 'PUT', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: blob
   });
   const el = document.getElementById('saveStatus');
@@ -830,7 +831,7 @@ async function uploadAnexos(id, files) {
   for (const file of files) {
     try {
       const path = `abrigos-anexos/abrigo-${a.num}/${Date.now()}-${file.name}`;
-      const res = await gFetch(`/sites/${SITE_ID}/drive/root:/${path}:/content`, {
+      const res = await gFetch(`/drives/${DRIVE_ID}/root:/${path}:/content`, {
         method: 'PUT',
         headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': file.type || 'application/octet-stream' },
         body: file
@@ -853,7 +854,7 @@ async function deletarAnexo(abrigoId, anexoId) {
   if (!confirm('Remover este anexo?')) return;
   const a = abrigos.find(x => x.id === abrigoId);
   try {
-    await gFetch(`/sites/${SITE_ID}/drive/items/${anexoId}`, { method: 'DELETE' });
+    await gFetch(`/drives/${DRIVE_ID}/items/${anexoId}`, { method: 'DELETE' });
   } catch(e) {}
   a.anexos = (a.anexos || []).filter(ax => ax.id !== anexoId);
   renderDetalhe(a, calcStatus(a), 'anexos');
