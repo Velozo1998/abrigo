@@ -14,7 +14,7 @@
     --blue: #8be9fd; --blue-bg: #081828; --blue-border: #0e3050;
     --red: #ff5555; --red-bg: #280a0a; --red-border: #4a1010;
     --yellow: #f1fa8c; --yellow-bg: #1e1c08; --yellow-border: #3a3510;
-    --purple: #bd93f9; --purple-bg: #1a0a28; --purple-border: #3a1a50;
+    --purple: #bd93f9; --purple-bg: #1a0a28; --purple-border: #3a1a50; --manut: #9a6fd8; --manut-bg: #251040; --manut-border: #5a2a80;
     --font-mono: 'IBM Plex Mono', monospace; --font: 'IBM Plex Sans', sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -65,10 +65,14 @@
   .abrigo-card.alugado { background:var(--blue-bg); border-color:var(--blue-border); }
   .abrigo-card.atraso { background:var(--red-bg); border-color:var(--red-border); }
   .abrigo-card.retirada { background:var(--yellow-bg); border-color:var(--yellow-border); }
+  .abrigo-card.aguardando { background:var(--purple-bg); border-color:var(--purple-border); }
+  .abrigo-card.manutencao { background:var(--manut-bg); border-color:var(--manut-border); }
   .abrigo-card:hover.disponivel { box-shadow:0 4px 20px #50fa7b18; }
   .abrigo-card:hover.alugado { box-shadow:0 4px 20px #8be9fd18; }
   .abrigo-card:hover.atraso { box-shadow:0 4px 20px #ff555528; }
   .abrigo-card:hover.retirada { box-shadow:0 4px 20px #f1fa8c18; }
+  .abrigo-card:hover.aguardando { box-shadow:0 4px 20px #bd93f928; }
+  .abrigo-card:hover.manutencao { box-shadow:0 4px 20px #9a6fd828; }
   .card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:7px; }
   .card-num { font-family:var(--font-mono); font-size:21px; font-weight:700; color:#f8f8f2; }
   .card-dot { width:8px; height:8px; border-radius:50%; margin-top:5px; }
@@ -76,12 +80,16 @@
   .alugado .card-dot { background:var(--blue); box-shadow:0 0 6px var(--blue); }
   .atraso .card-dot { background:var(--red); box-shadow:0 0 6px var(--red); animation:pulse 1.5s infinite; }
   .retirada .card-dot { background:var(--yellow); box-shadow:0 0 6px var(--yellow); }
+  .aguardando .card-dot { background:var(--purple); box-shadow:0 0 6px var(--purple); animation:pulse 1.5s infinite; }
+  .manutencao .card-dot { background:var(--manut); box-shadow:0 0 6px var(--manut); animation:pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   .card-status { font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; margin-bottom:5px; }
   .disponivel .card-status { color:var(--green); }
   .alugado .card-status { color:var(--blue); }
   .atraso .card-status { color:var(--red); }
   .retirada .card-status { color:var(--yellow); }
+  .aguardando .card-status { color:var(--purple); }
+  .manutencao .card-status { color:var(--manut); }
   .card-name { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .card-parcelas { font-size:11px; margin-top:4px; font-family:var(--font-mono); }
   .empty-msg { text-align:center; color:var(--muted); padding:60px 0; font-size:14px; }
@@ -247,6 +255,7 @@
       <div class="stat-card" onclick="setFiltro('alugado')"><div class="stat-num" id="sn-alugado" style="color:#8be9fd">—</div><div class="stat-label">Alugados</div></div>
       <div class="stat-card" onclick="setFiltro('atraso')"><div class="stat-num" id="sn-atraso" style="color:#ff5555">—</div><div class="stat-label">Em Atraso</div></div>
       <div class="stat-card" onclick="setFiltro('retirada')"><div class="stat-num" id="sn-retirada" style="color:#f1fa8c">—</div><div class="stat-label">Retirada</div></div>
+      <div class="stat-card" onclick="setFiltro('aguardando')"><div class="stat-num" id="sn-aguardando" style="color:#bd93f9">—</div><div class="stat-label">Ag. Entrega</div></div>
     </div>
     <div class="filters">
       <input class="search-input" id="searchInput" placeholder="Buscar nº, locatário, funcionário, endereço..." oninput="renderGrid()">
@@ -255,6 +264,7 @@
       <button class="filter-btn" id="fb-alugado" onclick="setFiltro('alugado')">Alugado</button>
       <button class="filter-btn" id="fb-atraso" onclick="setFiltro('atraso')">Em Atraso</button>
       <button class="filter-btn" id="fb-retirada" onclick="setFiltro('retirada')">Retirada</button>
+      <button class="filter-btn" id="fb-aguardando" onclick="setFiltro('aguardando')" style="color:var(--purple)">Ag. Entrega</button>
     </div>
     <div class="grid" id="grid"></div>
     <div class="empty-msg" id="emptyMsg" style="display:none">Nenhum abrigo encontrado.</div>
@@ -283,7 +293,7 @@ const DRIVE_ID = 'b!rKLFTB5n70mXnbL_HyTzD49kJGDjsyVPlVgVNAax3797bAbf1jW3SaFFpFQ7
 const SITE_ID = 'grupovagula2026.sharepoint.com,4cc5a2ac-671e-49ef-979d-b2ff1f24f30f,6024648f-b3e3-4f25-9558-153406b1dfbf';
 const TOTAL = 33;
 const SCOPES = ['Files.ReadWrite', 'Sites.ReadWrite.All', 'User.Read'];
-const STATUS_LABEL = { disponivel:'Disponível', alugado:'Alugado', atraso:'Em Atraso', retirada:'Retirada Solicitada' };
+const STATUS_LABEL = { disponivel:'Disponível', alugado:'Alugado', atraso:'Em Atraso', retirada:'Retirada Solicitada', aguardando:'Aguard. Entrega', manutencao:'Em Manutenção' };
 const FORMAS_PGTO = ['PIX', 'Boleto', 'Dinheiro', 'Cartão'];
 
 let msalInstance = null;
@@ -451,7 +461,7 @@ function atualizarStatusParcelas(a) {
 
 // ─── STATUS GERAL ─────────────────────────────────────────
 function calcStatus(a) {
-  if (a.status === 'disponivel' || a.status === 'retirada') return a.status;
+  if (a.status === 'disponivel' || a.status === 'retirada' || a.status === 'aguardando') return a.status;
   atualizarStatusParcelas(a);
   const temAtraso = (a.parcelas || []).some(p => p.status === 'atrasado');
   return temAtraso ? 'atraso' : 'alugado';
@@ -475,7 +485,8 @@ function renderGrid() {
   document.getElementById('sn-disponivel').textContent = counts.disponivel;
   document.getElementById('sn-alugado').textContent = counts.alugado;
   document.getElementById('sn-atraso').textContent = counts.atraso;
-  document.getElementById('sn-retirada').textContent = counts.retirada;
+  document.getElementById('sn-retirada').textContent = counts.retirada || 0;
+  document.getElementById('sn-aguardando').textContent = counts.aguardando || 0;
 
   if (!filtrados.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -495,7 +506,7 @@ function renderGrid() {
       + '<div class="card-status">'+STATUS_LABEL[st]+'</div>'
       + (a.locatario ? '<div class="card-name">'+esc(a.locatario)+'</div>' : '')
       + parcelasHtml
-      + (a.emManutencao ? '<div style="margin-top:4px"><span class="manut-badge">Manutenção</span></div>' : '')
+      + (a.emManutencao ? '<div style="margin-top:4px"><span class="manut-badge">🔧 Manutenção</span></div>' : '')
       + '</div>';
   }).join('');
 }
@@ -535,7 +546,7 @@ function renderDetalhe(a, st, tabAtiva = 'dados') {
     const multaVal = (dias > 0 && a.multaAtraso) ? (parseFloat(a.multaAtraso) * Math.ceil(dias / 30)).toFixed(2) : null;
     const statusLabel = p.status === 'pago' ? 'Pago' : p.status === 'atrasado' ? 'Atrasado' : 'Pendente';
     const atrasoSpan = p.status === 'atrasado' ? '<span style="color:var(--red)">'+dias+' dia'+(dias>1?'s':'')+' de atraso</span>' : '';
-    const pgtoDiv = p.status === 'pago' ? '<div class="parcela-pgto">✓ Pago em '+p.dataPagamento+' via '+p.formaPagamento+(p.valorPago?' · R$ '+p.valorPago:'')+(p.obs?' · '+esc(p.obs):'')+' <button onclick="gerarRecibo('+a.id+','+p.id+')" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:11px;margin-left:6px">🖨 Recibo</button></div>' : '';
+        const pgtoDiv = p.status === 'pago' ? '<div class="parcela-pgto">✓ Pago em '+p.dataPagamento+' via '+p.formaPagamento+(p.valorPago?' · R$ '+p.valorPago:'')+(p.obs?' · '+esc(p.obs):'')+' <button onclick="gerarRecibo('+a.id+','+p.id+')" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:11px;margin-left:6px">🖨 Recibo</button> <button onclick="editarParcela('+a.id+','+p.id+')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:11px;margin-left:4px">✏️ Editar</button></div>' : '';
     const multaDiv = multaVal ? '<div class="parcela-multa">Multa estimada: R$ '+multaVal+'</div>' : '';
     const pagarBtn = p.status !== 'pago' ? '<button class="btn-pagar" onclick="abrirPagamento('+a.id+','+p.id+')">Registrar Pagamento</button>' : '';
     return '<div class="parcela-item '+p.status+'">'
@@ -581,11 +592,14 @@ function renderDetalhe(a, st, tabAtiva = 'dados') {
   let actions = '';
   if (st === 'disponivel') actions = '<button class="btn btn-green btn-sm" onclick="fechar(\'overlayDetalhe\');abrirModal(\'alugar\','+a.id+')">+ Alugar Abrigo</button>';
   else if (st === 'alugado' || st === 'atraso') actions = '<button class="btn btn-yellow btn-sm" onclick="abrirModal(\'retirada\','+a.id+')">Solicitar Retirada</button>'
+    + ' <button class="btn btn-purple btn-sm" onclick="solicitarEntrega('+a.id+')">📦 Ag. Entrega</button>'
     + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>';
   else if (st === 'retirada') actions = '<button class="btn btn-red btn-sm" onclick="abrirModal(\'devolver\','+a.id+')">Confirmar Devolução</button>'
     + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>'
     + ' <button class="btn btn-cancel btn-sm" onclick="cancelarRetirada('+a.id+')">↩ Cancelar Retirada</button>';
-  if (st !== 'disponivel') actions += ' <button class="btn btn-sm" style="background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple)" onclick="toggleManutencao('+a.id+')">'+( a.emManutencao ? '✓ Em Manutenção' : '🔧 Manutenção')+'</button>';
+  else if (st === 'aguardando') actions = '<button class="btn btn-green btn-sm" onclick="confirmarEntrega('+a.id+')">✓ Confirmar Entrega</button>'
+    + ' <button class="btn btn-cancel btn-sm" onclick="cancelarAguardando('+a.id+')">↩ Cancelar</button>';
+  actions += ' <button class="btn btn-sm" style="background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple)" onclick="toggleManutencao('+a.id+')">'+( a.emManutencao ? '✓ Em Manutenção' : '🔧 Manutenção')+'</button>';
 
   const tabDados = tabAtiva === 'dados' ? 'active' : '';
   const tabParc = tabAtiva === 'parcelas' ? 'active' : '';
@@ -684,11 +698,8 @@ function abrirModal(tipo, id) {
         <div class="form-group"><label class="form-label">Telefone *</label><input class="form-input" id="f-tel" placeholder="(44) 00000-0000"></div>
       </div>
       <div class="form-group"><label class="form-label">Endereço da Obra *</label><input class="form-input" id="f-end" placeholder="Rua, número, bairro, cidade..."></div>
-      <div class="form-section">Dados da Entrega</div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Funcionário que Entregou *</label><input class="form-input" id="f-func" placeholder="Nome do funcionário"></div>
-        <div class="form-group"><label class="form-label">Data da Locação *</label><input class="form-input" type="date" id="f-dloc"></div>
-      </div>
+      <div class="form-section">Dados da Locação</div>
+      <div class="form-group"><label class="form-label">Data da Locação *</label><input class="form-input" type="date" id="f-dloc"></div>
       <div class="form-section">Valores e Prazos</div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Valor Mensal (R$) *</label><input class="form-input" type="number" step="0.01" id="f-val" placeholder="0,00"></div>
@@ -750,17 +761,17 @@ function abrirModal(tipo, id) {
 
 // ─── AÇÕES ────────────────────────────────────────────────
 async function confirmarAlugar(id) {
-  const loc = v('f-loc'), tel = v('f-tel'), end = v('f-end'), func = v('f-func'), dloc = v('f-dloc'), val = v('f-val');
-  if (!loc || !tel || !end || !func || !dloc || !val) { alert('Preencha os campos obrigatórios (*)'); return; }
+  const loc = v('f-loc'), tel = v('f-tel'), end = v('f-end'), dloc = v('f-dloc'), val = v('f-val');
+  if (!loc || !tel || !end || !dloc || !val) { alert('Preencha os campos obrigatórios (*)'); return; }
   const a = abrigos.find(x => x.id === id);
   Object.assign(a, {
-    status: 'alugado', locatario: loc, doc: v('f-doc'), tel, endereco: end,
-    funcEntregou: func, dataLocacao: dloc, valorMensal: val,
+    status: 'aguardando', locatario: loc, doc: v('f-doc'), tel, endereco: end,
+    funcEntregou: '', dataLocacao: dloc, valorMensal: val,
     multaAtraso: v('f-multa'), dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs'),
     parcelas: gerarParcelas(dloc)
   });
-  a.historico.unshift({ tipo: 'locacao', data: hoje(), desc: 'Alugado para '+loc+' — '+end+' | Entregue por: '+func, obs: v('f-obs') });
-  fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'parcelas'); abrir('overlayDetalhe'); }, 150);
+  a.historico.unshift({ tipo: 'locacao', data: hoje(), desc: 'Locação cadastrada para '+loc+' — '+end+'. Aguardando entrega do abrigo.', obs: v('f-obs') });
+  fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
   await salvar();
 }
 
@@ -1310,6 +1321,115 @@ async function quitarDivida(abrigoId, dividaId) {
   a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: 'Dívida de '+esc(d.locatario)+' marcada como quitada. Total: R$ '+d.totalEstimado, obs: '' });
   await salvar();
   abrirDashboard();
+}
+
+
+// ─── AGUARDANDO ENTREGA ───────────────────────────────────
+async function solicitarEntrega(id) {
+  if (!confirm('Marcar abrigo como "Aguardando Entrega"?\nEle ficará roxo até ser entregue ao cliente.')) return;
+  const a = abrigos.find(x => x.id === id);
+  a.status = 'aguardando';
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Entrega solicitada. Abrigo aguardando ser levado ao cliente.', obs: '' });
+  renderDetalhe(a, calcStatus(a), 'dados');
+  renderGrid();
+  await salvar();
+}
+
+function confirmarEntrega(id) {
+  const a = abrigos.find(x => x.id === id);
+  const panel = document.getElementById('panelModal');
+  panel.innerHTML = ''
+    + '<div class="panel-header"><div><div class="panel-title">Confirmar Entrega — Abrigo #'+a.num+'</div>'
+    + '<div class="panel-sub">'+esc(a.locatario)+' · '+esc(a.endereco)+'</div></div>'
+    + '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button></div>'
+    + '<div class="panel-body">'
+    + '<div class="form-group"><label class="form-label">Funcionário que Entregou *</label>'
+    + '<input class="form-input" id="ce-func" placeholder="Nome do funcionário" autofocus></div>'
+    + '<div class="form-group"><label class="form-label">Quem Recebeu na Obra <span style="color:var(--muted);font-weight:400">(opcional)</span></label>'
+    + '<input class="form-input" id="ce-recebeu" placeholder="Nome de quem recebeu o abrigo"></div>'
+    + '<div class="form-group"><label class="form-label">Observações</label>'
+    + '<textarea class="form-textarea" id="ce-obs" rows="2" placeholder="Ex: entregue com kit completo..."></textarea></div>'
+    + '<div class="form-footer">'
+    + '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+    + '<button class="btn btn-green" onclick="confirmarEntregaSalvar('+id+')">✓ Confirmar Entrega</button>'
+    + '</div></div>';
+  abrir('overlayModal');
+}
+
+async function confirmarEntregaSalvar(id) {
+  const func = document.getElementById('ce-func').value.trim();
+  if (!func) { alert('Informe o funcionário que fez a entrega.'); return; }
+  const recebeu = document.getElementById('ce-recebeu').value.trim();
+  const obs = document.getElementById('ce-obs').value.trim();
+  const a = abrigos.find(x => x.id === id);
+  a.status = 'alugado';
+  a.funcEntregou = func;
+  const desc = 'Abrigo entregue por: '+func+(recebeu ? ' · Recebeu: '+recebeu : ''+(obs?' · '+obs:''));
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc, obs });
+  fechar('overlayModal');
+  renderDetalhe(a, calcStatus(a), 'dados');
+  renderGrid();
+  await salvar();
+}
+
+async function cancelarAguardando(id) {
+  const a = abrigos.find(x => x.id === id);
+  a.status = 'alugado';
+  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Solicitação de entrega cancelada.', obs: '' });
+  renderDetalhe(a, calcStatus(a), 'dados');
+  renderGrid();
+  await salvar();
+}
+
+// ─── EDITAR PARCELA PAGA ──────────────────────────────────
+function editarParcela(abrigoId, parcelaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const p = a.parcelas.find(x => x.id === parcelaId);
+  const panel = document.getElementById('panelModal');
+  const formasOpts = FORMAS_PGTO.map(f => '<option'+(f===p.formaPagamento?' selected':'')+'>'+f+'</option>').join('');
+  // Convert dd/mm/yyyy to yyyy-mm-dd for input
+  let dataVal = '';
+  if (p.dataPagamento) {
+    const pts = p.dataPagamento.split('/');
+    if (pts.length === 3) dataVal = pts[2]+'-'+pts[1]+'-'+pts[0];
+  }
+  panel.innerHTML = ''
+    + '<div class="panel-header">'
+    +   '<div><div class="panel-title">Editar Pagamento</div>'
+    +   '<div class="panel-sub">Abrigo #'+a.num+' · Parcela '+p.id+'</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'
+    +   '<div class="form-row">'
+    +     '<div class="form-group"><label class="form-label">Data do Pagamento *</label><input class="form-input" type="date" id="ep-data" value="'+dataVal+'"></div>'
+    +     '<div class="form-group"><label class="form-label">Forma de Pagamento *</label><select class="form-select" id="ep-forma">'+formasOpts+'</select></div>'
+    +   '</div>'
+    +   '<div class="form-group"><label class="form-label">Valor Pago (R$)</label><input class="form-input" type="number" step="0.01" id="ep-valor" value="'+(p.valorPago||'')+'" placeholder="'+(a.valorMensal||'')+'"></div>'
+    +   '<div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="ep-obs" rows="2">'+esc(p.obs||'')+'</textarea></div>'
+    +   '<div class="form-footer">'
+    +     '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+    +     '<button class="btn btn-blue" onclick="confirmarEdicaoParcela('+abrigoId+','+parcelaId+')">Salvar Alterações</button>'
+    +   '</div>'
+    + '</div>';
+  abrir('overlayModal');
+}
+
+async function confirmarEdicaoParcela(abrigoId, parcelaId) {
+  const a = abrigos.find(x => x.id === abrigoId);
+  const p = a.parcelas.find(x => x.id === parcelaId);
+  const dataRaw = document.getElementById('ep-data').value;
+  const forma = document.getElementById('ep-forma').value;
+  if (!dataRaw || !forma) { alert('Preencha os campos obrigatórios'); return; }
+  const oldInfo = 'Pago em '+p.dataPagamento+' via '+p.formaPagamento;
+  p.dataPagamento = fmtDate(dataRaw);
+  p.formaPagamento = forma;
+  p.valorPago = document.getElementById('ep-valor').value || p.valorPago;
+  p.obs = document.getElementById('ep-obs').value;
+  a.historico.unshift({ tipo: 'pagamento', data: hoje(), desc: 'Parcela '+p.id+' editada. Antes: '+oldInfo+'. Agora: '+p.dataPagamento+' via '+p.formaPagamento, obs: '' });
+  fechar('overlayModal');
+  renderDetalhe(a, calcStatus(a), 'parcelas');
+  renderGrid();
+  await salvar();
 }
 
 // ─── EXPORT ───────────────────────────────────────────────
