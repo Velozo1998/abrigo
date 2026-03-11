@@ -244,6 +244,7 @@
       <span class="save-status" id="saveStatus">Salvo ✓</span>
       <button class="dash-btn" onclick="abrirDashboard()">📊 Financeiro</button>
       <button class="dash-btn" onclick="abrirVencimentos()">🔔 Vencimentos</button>
+      <button class="dash-btn" onclick="abrirLogGlobal()">📋 Histórico Geral</button>
       <button class="btn-export" onclick="exportarCSV()">↓ Exportar CSV</button>
     </div>
   </header>
@@ -280,6 +281,9 @@
 <div class="overlay" id="overlayVenc" onclick="fecharSeOverlay(event,'overlayVenc')">
   <div class="panel" id="panelVenc"></div>
 </div>
+<div class="overlay" id="overlayLog" onclick="fecharSeOverlay(event,'overlayLog')">
+  <div class="panel" style="max-width:750px" id="panelLog"></div>
+</div>
 <div class="overlay" id="overlayModal" onclick="fecharSeOverlay(event,'overlayModal')">
   <div class="panel" id="panelModal"></div>
 </div>
@@ -300,6 +304,7 @@ let msalInstance = null;
 let accessToken = null;
 let abrigos = [];
 let filtroAtivo = 'todos';
+let logGlobal = [];
 
 // ─── AUTH ─────────────────────────────────────────────────
 async function init() {
@@ -419,6 +424,13 @@ async function salvar() {
   el._t = setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+
+// ─── LOG GLOBAL ───────────────────────────────────────────
+function addLog(tipo, desc, abrigoNum) {
+  logGlobal.unshift({ ts: new Date().toISOString(), tipo, desc, abrigoNum, usuario: document.getElementById('userBadge').textContent });
+  if (logGlobal.length > 500) logGlobal.length = 500; // keep last 500
+}
+
 // ─── DADOS INICIAIS ───────────────────────────────────────
 function dadosIniciais() {
   return Array.from({ length: TOTAL }, (_, i) => ({
@@ -428,7 +440,7 @@ function dadosIniciais() {
     funcEntregou: '', funcRecolheu: '',
     dataLocacao: '', valorMensal: '',
     dataDevolucaoPrevista: '', multaAtraso: '',
-    obs: '', historico: [], parcelas: [], anexos: [], emManutencao: false, dividas: []
+    obs: '', historico: [], parcelas: [], anexos: [], emManutencao: false, dividas: [], transferencias: []
   }));
 }
 
@@ -593,12 +605,13 @@ function renderDetalhe(a, st, tabAtiva = 'dados') {
   if (st === 'disponivel') actions = '<button class="btn btn-green btn-sm" onclick="fechar(\'overlayDetalhe\');abrirModal(\'alugar\','+a.id+')">+ Alugar Abrigo</button>';
   else if (st === 'alugado' || st === 'atraso') actions = '<button class="btn btn-yellow btn-sm" onclick="abrirModal(\'retirada\','+a.id+')">Solicitar Retirada</button>'
     + ' <button class="btn btn-purple btn-sm" onclick="solicitarEntrega('+a.id+')">📦 Ag. Entrega</button>'
-    + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>';
+    + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>'
+    + ' <button class="btn btn-sm" style="background:#1a2a1a;border:1px solid #2a5a2a;color:#50fa7b" onclick="abrirTransferencia('+a.id+')">🔄 Transferir</button>';
   else if (st === 'retirada') actions = '<button class="btn btn-red btn-sm" onclick="abrirModal(\'devolver\','+a.id+')">Confirmar Devolução</button>'
     + ' <button class="btn btn-blue btn-sm" onclick="abrirModal(\'editarLocacao\','+a.id+')">Editar Dados</button>'
     + ' <button class="btn btn-cancel btn-sm" onclick="cancelarRetirada('+a.id+')">↩ Cancelar Retirada</button>';
   else if (st === 'aguardando') actions = '<button class="btn btn-green btn-sm" onclick="confirmarEntrega('+a.id+')">✓ Confirmar Entrega</button>'
-    + ' <button class="btn btn-cancel btn-sm" onclick="cancelarAguardando('+a.id+')">↩ Cancelar</button>';
+    + ' <button class="btn btn-red btn-sm" onclick="cancelarLocacao('+a.id+')">✕ Cancelar Locação</button>';
   actions += ' <button class="btn btn-sm" style="background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple)" onclick="toggleManutencao('+a.id+')">'+( a.emManutencao ? '✓ Em Manutenção' : '🔧 Manutenção')+'</button>';
 
   const tabDados = tabAtiva === 'dados' ? 'active' : '';
@@ -771,6 +784,7 @@ async function confirmarAlugar(id) {
     parcelas: gerarParcelas(dloc)
   });
   a.historico.unshift({ tipo: 'locacao', data: hoje(), desc: 'Locação cadastrada para '+loc+' — '+end+'. Aguardando entrega do abrigo.', obs: v('f-obs') });
+  addLog('locacao', 'Abrigo #'+a.num+' locado para '+loc, a.num);
   fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
   await salvar();
 }
@@ -858,8 +872,12 @@ async function finalizarDevolucao(id, opcao, funcRec, obs) {
         setTimeout(() => gerarReciboDevolucao(a.num, a.locatario, a.doc, a.endereco, parcelasAbertas, a.valorMensal, forma, total), 500);
       }
     }
-    a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
+    addLog('devolucao', 'Abrigo #'+a.num+' devolvido. Cliente: '+a.locatario+(funcRec?' | Recolhido por: '+funcRec:''), a.num);
+  a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Devolvido. Locatário: '+a.locatario+' — '+a.endereco+(funcRec?' | Recolhido por: '+funcRec:''), obs });
   }
+
+  // Arquivar anexos em subpasta histórico
+  await arquivarAnexos(a);
 
   Object.assign(a, {
     status: 'disponivel', locatario: '', doc: '', tel: '', endereco: '',
@@ -946,6 +964,7 @@ async function confirmarAdicionarParcelas(id) {
 async function toggleManutencao(id) {
   const a = abrigos.find(x => x.id === id);
   a.emManutencao = !a.emManutencao;
+  addLog('manutencao', 'Abrigo #'+a.num+(a.emManutencao?' entrou em manutenção':' saiu da manutenção'), a.num);
   a.historico.unshift({ tipo: a.emManutencao ? 'retirada' : 'renovacao', data: hoje(), desc: a.emManutencao ? 'Abrigo enviado para manutenção' : 'Abrigo retornou da manutenção', obs: '' });
   renderDetalhe(a, calcStatus(a), 'dados');
   renderGrid();
@@ -1372,12 +1391,39 @@ async function confirmarEntregaSalvar(id) {
   await salvar();
 }
 
-async function cancelarAguardando(id) {
+function cancelarLocacao(id) {
   const a = abrigos.find(x => x.id === id);
-  a.status = 'alugado';
-  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Solicitação de entrega cancelada.', obs: '' });
-  renderDetalhe(a, calcStatus(a), 'dados');
-  renderGrid();
+  const panel = document.getElementById('panelModal');
+  panel.innerHTML = ''
+    + '<div class="panel-header"><div><div class="panel-title">Cancelar Locação — Abrigo #'+a.num+'</div>'
+    + '<div class="panel-sub">'+esc(a.locatario)+'</div></div>'
+    + '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button></div>'
+    + '<div class="panel-body">'
+    + '<p class="confirm-text">O abrigo ainda <strong style="color:var(--text)">não foi entregue</strong>. Cancelar a locação irá:'
+    + '<br>• Liberar o abrigo como <span style="color:var(--green)">Disponível</span>'
+    + '<br>• Apagar os dados do cliente e parcelas geradas'
+    + '<br>• Registrar o cancelamento no histórico</p>'
+    + '<div class="form-group"><label class="form-label">Motivo do cancelamento <span style="color:var(--muted);font-weight:400">(opcional)</span></label>'
+    + '<textarea class="form-textarea" id="cancel-obs" rows="2" placeholder="Ex: cliente desistiu, levamos outro abrigo..."></textarea></div>'
+    + '<div class="form-footer">'
+    + '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Voltar</button>'
+    + '<button class="btn btn-red" onclick="confirmarCancelamento('+id+')">✕ Confirmar Cancelamento</button>'
+    + '</div></div>';
+  abrir('overlayModal');
+}
+
+async function confirmarCancelamento(id) {
+  const a = abrigos.find(x => x.id === id);
+  const obs = document.getElementById('cancel-obs').value.trim();
+  const nomeAnt = a.locatario;
+  a.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Locação cancelada antes da entrega. Cliente: '+nomeAnt+(obs?' · '+obs:''), obs });
+  addLog('cancelamento', 'Locação do abrigo #'+a.num+' cancelada antes da entrega. Cliente: '+nomeAnt, a.num);
+  Object.assign(a, {
+    status: 'disponivel', locatario: '', doc: '', tel: '', endereco: '',
+    funcEntregou: '', funcRecolheu: '', dataLocacao: '', valorMensal: '',
+    multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: []
+  });
+  fechar('overlayModal'); fechar('overlayDetalhe'); renderGrid();
   await salvar();
 }
 
@@ -1430,6 +1476,157 @@ async function confirmarEdicaoParcela(abrigoId, parcelaId) {
   renderDetalhe(a, calcStatus(a), 'parcelas');
   renderGrid();
   await salvar();
+}
+
+
+// ─── ARQUIVAR ANEXOS NA DEVOLUÇÃO ─────────────────────────
+async function arquivarAnexos(a) {
+  if (!a.anexos || a.anexos.length === 0) return;
+  // Pasta destino: abrigos-anexos/abrigo-XX/Histórico/NomeCliente - DD-MM-AAAA/
+  const dataFmt = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const nomeCliente = a.locatario.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim();
+  const pastaDestino = 'abrigos-anexos/abrigo-' + String(a.num).padStart(2,'0') + '/Histórico/' + nomeCliente + ' - ' + dataFmt;
+
+  for (const ax of a.anexos) {
+    try {
+      // Move file via Graph API rename/patch
+      const nomeArq = ax.nome || ax.name || ax.id;
+      await gFetch('/drives/' + DRIVE_ID + '/items/' + ax.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parentReference: { path: '/drives/' + DRIVE_ID + '/root:/' + pastaDestino },
+          name: nomeArq
+        })
+      });
+    } catch(e) {
+      console.warn('Não foi possível mover anexo:', ax.nome, e);
+    }
+  }
+  // Clear anexos list from abrigo after archiving
+  a.anexos = [];
+}
+
+
+// ─── TRANSFERÊNCIA DE ABRIGO ──────────────────────────────
+function abrirTransferencia(id) {
+  const a = abrigos.find(x => x.id === id);
+  const panel = document.getElementById('panelModal');
+  const disponiveis = abrigos.filter(x => x.status === 'disponivel' && !x.emManutencao);
+  if (disponiveis.length === 0) {
+    alert('Não há abrigos disponíveis para receber a transferência.');
+    return;
+  }
+  const opts = disponiveis.map(x => '<option value="'+x.id+'">#'+x.num+'</option>').join('');
+  panel.innerHTML = ''
+    + '<div class="panel-header"><div><div class="panel-title">🔄 Transferir Locação</div>'
+    + '<div class="panel-sub">Abrigo #'+a.num+' · '+esc(a.locatario)+'</div></div>'
+    + '<button class="close-btn" onclick="fechar(\'overlayModal\')">×</button></div>'
+    + '<div class="panel-body">'
+    + '<p class="confirm-text">O abrigo <strong style="color:var(--text)">#'+a.num+'</strong> será liberado e todos os dados do cliente — parcelas, histórico e anexos — serão transferidos para o abrigo selecionado.</p>'
+    + '<div class="form-group"><label class="form-label">Transferir para qual abrigo? *</label>'
+    + '<select class="form-select" id="tr-destino">'+opts+'</select></div>'
+    + '<div class="form-group"><label class="form-label">Motivo da transferência *</label>'
+    + '<input class="form-input" id="tr-motivo" placeholder="Ex: porta quebrada, problema estrutural..."></div>'
+    + '<div class="form-group"><label class="form-label">Funcionário responsável</label>'
+    + '<input class="form-input" id="tr-func" placeholder="Nome do funcionário"></div>'
+    + '<div class="form-footer">'
+    + '<button class="btn btn-cancel" onclick="fechar(\'overlayModal\')">Cancelar</button>'
+    + '<button class="btn btn-green" onclick="confirmarTransferencia('+id+')">🔄 Confirmar Transferência</button>'
+    + '</div></div>';
+  abrir('overlayModal');
+}
+
+async function confirmarTransferencia(origemId) {
+  const motivo = document.getElementById('tr-motivo').value.trim();
+  const func = document.getElementById('tr-func').value.trim();
+  if (!motivo) { alert('Informe o motivo da transferência.'); return; }
+  const destinoId = parseInt(document.getElementById('tr-destino').value);
+  const origem = abrigos.find(x => x.id === origemId);
+  const destino = abrigos.find(x => x.id === destinoId);
+  const desc = 'Transferido de #'+origem.num+' para #'+destino.num+'. Motivo: '+motivo+(func?' | Func: '+func:'');
+
+  // Register on origin
+  origem.historico.unshift({ tipo: 'devolucao', data: hoje(), desc: 'Transferência: locação movida para abrigo #'+destino.num+'. Motivo: '+motivo, obs: '' });
+  if (!origem.transferencias) origem.transferencias = [];
+  origem.transferencias.push({ data: hoje(), para: destino.num, motivo, func });
+
+  // Copy everything to destino
+  destino.status = 'alugado';
+  destino.locatario = origem.locatario;
+  destino.doc = origem.doc;
+  destino.tel = origem.tel;
+  destino.endereco = origem.endereco;
+  destino.funcEntregou = func || origem.funcEntregou;
+  destino.dataLocacao = origem.dataLocacao;
+  destino.valorMensal = origem.valorMensal;
+  destino.multaAtraso = origem.multaAtraso;
+  destino.dataDevolucaoPrevista = origem.dataDevolucaoPrevista;
+  destino.obs = origem.obs;
+  destino.parcelas = origem.parcelas;
+  destino.dividas = origem.dividas || [];
+  destino.anexos = origem.anexos || [];
+  destino.historico = [...(origem.historico || [])];
+  destino.historico.unshift({ tipo: 'locacao', data: hoje(), desc: 'Transferido do abrigo #'+origem.num+'. Motivo: '+motivo+(func?' | Func: '+func:''), obs: '' });
+  if (!destino.transferencias) destino.transferencias = [];
+  destino.transferencias.push({ data: hoje(), de: origem.num, motivo, func });
+
+  // Reset origem
+  Object.assign(origem, {
+    status: 'manutencao_pendente', locatario: '', doc: '', tel: '', endereco: '',
+    funcEntregou: '', funcRecolheu: '', dataLocacao: '', valorMensal: '',
+    multaAtraso: '', dataDevolucaoPrevista: '', obs: '', parcelas: [],
+    dividas: [], anexos: [], emManutencao: true
+  });
+  origem.historico.unshift({ tipo: 'manutencao', data: hoje(), desc: 'Abrigo entrou em manutenção após transferência. Motivo: '+motivo, obs: '' });
+
+  addLog('transferencia', 'Locação transferida do abrigo #'+origem.num+' para #'+destino.num+'. Cliente: '+destino.locatario+'. Motivo: '+motivo, origem.num);
+  fechar('overlayModal'); fechar('overlayDetalhe'); renderGrid();
+  await salvar();
+  setTimeout(() => { renderDetalhe(destino, calcStatus(destino), 'dados'); abrir('overlayDetalhe'); }, 200);
+}
+
+// ─── LOG / HISTÓRICO GERAL ────────────────────────────────
+function abrirLogGlobal() {
+  const panel = document.getElementById('panelLog');
+  const CORES = {
+    locacao: 'var(--blue)', entrega: 'var(--green)', devolucao: 'var(--yellow)',
+    cancelamento: 'var(--red)', transferencia: 'var(--purple)', manutencao: '#bd93f9',
+    pagamento: 'var(--green)', edicao: 'var(--muted)'
+  };
+  const ICONS = {
+    locacao:'📝', entrega:'🚚', devolucao:'↩', cancelamento:'✕',
+    transferencia:'🔄', manutencao:'🔧', pagamento:'💰', edicao:'✏️'
+  };
+
+  const rows = logGlobal.length > 0
+    ? logGlobal.map(l => {
+        const d = new Date(l.ts);
+        const dataStr = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+        const cor = CORES[l.tipo] || 'var(--muted)';
+        const icon = ICONS[l.tipo] || '•';
+        return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">'
+          + '<span style="font-size:16px;margin-top:1px">'+icon+'</span>'
+          + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;color:var(--text)">'+esc(l.desc)+'</div>'
+          + '<div style="display:flex;gap:10px;margin-top:3px">'
+          + '<span style="font-size:10px;color:'+cor+';font-family:var(--font-mono);text-transform:uppercase">'+l.tipo+'</span>'
+          + (l.abrigoNum ? '<span style="font-size:10px;color:var(--muted)">Abrigo #'+l.abrigoNum+'</span>' : '')
+          + (l.usuario ? '<span style="font-size:10px;color:var(--muted)">'+esc(l.usuario)+'</span>' : '')
+          + '</div></div>'
+          + '<span style="font-size:10px;color:var(--muted);white-space:nowrap;margin-top:2px">'+dataStr+'</span>'
+          + '</div>';
+      }).join('')
+    : '<div style="color:var(--muted);font-size:13px;padding:20px 0">Nenhuma ação registrada ainda.</div>';
+
+  panel.innerHTML = ''
+    + '<div class="panel-header" style="position:sticky;top:0;background:var(--surface);z-index:1">'
+    +   '<div><div class="panel-title">📋 Histórico Geral do Sistema</div>'
+    +   '<div class="panel-sub">'+logGlobal.length+' evento(s) registrado(s)</div></div>'
+    +   '<button class="close-btn" onclick="fechar(\'overlayLog\')">×</button>'
+    + '</div>'
+    + '<div class="panel-body">'+rows+'</div>';
+  abrir('overlayLog');
 }
 
 // ─── EXPORT ───────────────────────────────────────────────
