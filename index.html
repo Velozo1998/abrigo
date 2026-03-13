@@ -751,7 +751,10 @@ function abrirModal(tipo, id) {
         <div class="form-group"><label class="form-label">Multa por Atraso/mês (R$)</label><input class="form-input" type="number" step="0.01" id="f-multa" value="${a.multaAtraso}"></div>
       </div>
       <div class="form-group"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="f-forma"><option value="">Selecione...</option><option ${a.formaPagamento==='PIX'?'selected':''}>PIX</option><option ${a.formaPagamento==='Boleto'?'selected':''}>Boleto</option><option ${a.formaPagamento==='Dinheiro'?'selected':''}>Dinheiro</option><option ${a.formaPagamento==='Cartão'?'selected':''}>Cartão</option></select></div>
-      <div class="form-group"><label class="form-label">Data Prevista de Devolução</label><input class="form-input" type="date" id="f-ddev" value="${a.dataDevolucaoPrevista}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data de Locação</label><input class="form-input" type="date" id="f-dloc" value="${a.dataLocacao}"></div>
+        <div class="form-group"><label class="form-label">Data Prevista de Devolução</label><input class="form-input" type="date" id="f-ddev" value="${a.dataDevolucaoPrevista}"></div>
+      </div>
       <div class="form-group"><label class="form-label">Observações</label><textarea class="form-textarea" id="f-obs" rows="2">${esc(a.obs)}</textarea></div>
       <div class="form-footer">
         <button class="btn btn-cancel" onclick="fechar('overlayModal')">Cancelar</button>
@@ -808,7 +811,7 @@ async function confirmarEdicao(id) {
   Object.assign(a, {
     locatario: v('f-loc'), doc: v('f-doc'), tel: v('f-tel'), endereco: v('f-end'),
     valorMensal: v('f-val'), multaAtraso: v('f-multa'), formaPagamento: v('f-forma'),
-    dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs')
+    dataLocacao: v('f-dloc'), dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs')
   });
   a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Dados da locação atualizados', obs: '' });
   fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
