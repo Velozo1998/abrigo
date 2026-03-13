@@ -808,12 +808,36 @@ async function confirmarAlugar(id) {
 
 async function confirmarEdicao(id) {
   const a = abrigos.find(x => x.id === id);
+  const novaDataLoc = v('f-dloc');
+  const dataLocAnterior = a.dataLocacao;
   Object.assign(a, {
     locatario: v('f-loc'), doc: v('f-doc'), tel: v('f-tel'), endereco: v('f-end'),
     valorMensal: v('f-val'), multaAtraso: v('f-multa'), formaPagamento: v('f-forma'),
-    dataLocacao: v('f-dloc'), dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs')
+    dataLocacao: novaDataLoc, dataDevolucaoPrevista: v('f-ddev'), obs: v('f-obs')
   });
-  a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Dados da locação atualizados', obs: '' });
+  if (novaDataLoc && novaDataLoc !== dataLocAnterior) {
+    const totalMeses = Math.max((a.parcelas || []).length, 12);
+    const novasParcelas = gerarParcelas(novaDataLoc, totalMeses);
+    const primeiroVenc = novasParcelas[0].vencimento;
+    // Preserva apenas parcelas pagas cujo vencimento >= primeira parcela da nova data
+    const pagasValidas = (a.parcelas || []).filter(p => p.status === 'pago' && p.vencimento >= primeiroVenc);
+    pagasValidas.forEach((paga, i) => {
+      if (novasParcelas[i]) {
+        novasParcelas[i].status = 'pago';
+        novasParcelas[i].dataPagamento = paga.dataPagamento;
+        novasParcelas[i].formaPagamento = paga.formaPagamento;
+        novasParcelas[i].valorPago = paga.valorPago;
+        novasParcelas[i].obs = paga.obs;
+      }
+    });
+    const descartadas = (a.parcelas || []).filter(p => p.status === 'pago' && p.vencimento < primeiroVenc).length;
+    a.parcelas = novasParcelas;
+    atualizarStatusParcelas(a);
+    const obs = descartadas > 0 ? ` (${descartadas} pagamento(s) anteriores removidos)` : ', pagamentos preservados';
+    a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Data de locacao alterada — parcelas regeradas' + obs, obs: '' });
+  } else {
+    a.historico.unshift({ tipo: 'renovacao', data: hoje(), desc: 'Dados da locacao atualizados', obs: '' });
+  }
   fechar('overlayModal'); renderGrid(); setTimeout(() => { renderDetalhe(a, calcStatus(a), 'dados'); abrir('overlayDetalhe'); }, 150);
   await salvar();
 }
