@@ -379,6 +379,10 @@ async function carregar() {
       ultimoETag = meta.eTag || meta.cTag || null;
     }
     const data = await res.json();
+    if (data && data.abrigos) {
+      logGlobal = Array.isArray(data.logGlobal) ? data.logGlobal : [];
+      return Array.isArray(data.abrigos) ? data.abrigos : dadosIniciais();
+    }
     return Array.isArray(data) ? data : dadosIniciais();
   } catch { return dadosIniciais(); }
 }
@@ -407,7 +411,8 @@ async function salvar() {
     }
   } catch(e) {}
 
-  const blob = new Blob([JSON.stringify(abrigos, null, 2)], { type: 'application/json' });
+  const payload = { abrigos, logGlobal };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   await gFetch(`/drives/${DRIVE_ID}/root:/${FILE_NAME}:/content`, {
     method: 'PUT', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: blob
   });
