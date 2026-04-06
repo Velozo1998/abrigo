@@ -850,7 +850,7 @@ async function confirmarEdicao(id) {
 async function confirmarDevolver(id) {
   const a = abrigos.find(x => x.id === id);
   const funcRec = v('f-func-rec'), obs = v('f-obs-dev');
-  const parcelasAbertas = (a.parcelas || []).filter(p => p.status !== 'pago');
+  const parcelasAbertas = (a.parcelas || []).filter(p => p.status === 'atrasado');
 
   if (parcelasAbertas.length > 0) {
     // Show options for pending parcelas
@@ -879,7 +879,7 @@ async function confirmarDevolver(id) {
 
 async function finalizarDevolucao(id, opcao, funcRec, obs) {
   const a = abrigos.find(x => x.id === id);
-  const parcelasAbertas = (a.parcelas || []).filter(p => p.status !== 'pago');
+  const parcelasAbertas = (a.parcelas || []).filter(p => p.status === 'atrasado');
 
   if (opcao === 'manter' && parcelasAbertas.length > 0) {
     // Save divida record
